@@ -569,7 +569,10 @@ def _amplify_bossbar(
             if ttype == "item_collect":
                 target = str(trigger.get("target", ""))
                 track_event = f"exp_collect_{target.lower().replace(' ', '_')}" if target else ""
-                max_count = int(trigger.get("quantity", trigger.get("count", 0)))
+                try:
+                    max_count = int(trigger.get("quantity", trigger.get("count", 0)))
+                except (ValueError, TypeError):
+                    max_count = 0
                 bossbar_title = f"{profile['color']}{target or '任务'}进度"
                 break
 

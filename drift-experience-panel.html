@@ -1225,6 +1225,8 @@ function startWorkflowPolling(workflowId, playerId, levelId) {
         await syncAfterWorkflow(workflowId, playerId, levelId)
 
       } else if (status === 'FAILED') {
+        // Update pipeline steps one last time before settling (to show failed step)
+        updatePipelineSteps(wf)
         _wfSettled = true
         clearInterval(myTimer)
         if (_wfPollTimer === myTimer) _wfPollTimer = null
