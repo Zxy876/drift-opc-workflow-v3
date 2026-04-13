@@ -2,17 +2,26 @@ package com.driftmc.scene;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import java.util.logging.Level;
 
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.Particle;
+import org.bukkit.boss.BarColor;
+import org.bukkit.boss.BarStyle;
+import org.bukkit.boss.BossBar;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitRunnable;
 
 import com.driftmc.cinematic.CinematicController;
 import com.driftmc.npc.NPCManager;
@@ -36,6 +45,10 @@ public final class SceneAwareWorldPatchExecutor extends WorldPatchExecutor {
     private Map<String, Object> currentRawOperations;
     private TutorialStateMachine tutorialStateMachine;
     private TutorialManager tutorialManager;
+
+    // ── DifficultyAmplifier: BossBar + trigger zone particle state ──
+    private final Map<UUID, BossBar> difficultyBossBars = new HashMap<>();
+    private final Map<UUID, BukkitRunnable> triggerZoneParticleTasks = new HashMap<>();
 
     private static final String TUTORIAL_LEVEL_ID = "flagship_tutorial";
     private static final String PRIMARY_LEVEL_ID = "flagship_03";
@@ -77,6 +90,19 @@ public final class SceneAwareWorldPatchExecutor extends WorldPatchExecutor {
     public void shutdown() {
         super.shutdown();
         sceneLoader.shutdown();
+        // Clean up all difficulty BossBars and particle tasks
+        for (BossBar bar : difficultyBossBars.values()) {
+            bar.removeAll();
+        }
+        difficultyBossBars.clear();
+        for (BukkitRunnable task : triggerZoneParticleTasks.values()) {
+            try {
+                task.cancel();
+            } catch (IllegalStateException ignored) {
+                // already cancelled
+            }
+        }
+        triggerZoneParticleTasks.clear();
     }
 
     @Override
@@ -499,6 +525,18 @@ public final class SceneAwareWorldPatchExecutor extends WorldPatchExecutor {
                 }
             }
         }
+
+        // ── DifficultyAmplifier: BossBar handling ──
+        Object bossbarObj = operations.get("bossbar");
+        if (bossbarObj instanceof Map<?, ?> bossbarMap) {
+            handleDifficultyBossBar(player, filterStringKeys(bossbarMap));
+        }
+
+        // ── DifficultyAmplifier: trigger zone particle borders ──
+        Object triggerZonesObj = operations.get("trigger_zones");
+        if (triggerZonesObj instanceof List<?> tzList) {
+            handleTriggerZoneParticles(player, tzList, operations);
+        }
     }
 
     private Map<String, Object> filterStringKeys(Map<?, ?> source) {
@@ -542,6 +580,295 @@ public final class SceneAwareWorldPatchExecutor extends WorldPatchExecutor {
             levelId = cleanString(metadata.get("scene_id"));
         }
         return !levelId.isEmpty() && levelId.equalsIgnoreCase(TUTORIAL_LEVEL_ID);
+    }
+
+    // ── DifficultyAmplifier: BossBar management ──────────────────────────────
+
+    /**
+     * Create or update a BossBar based on the difficulty amplifier's bossbar config.
+     * Config keys: title, color, style, progress, track_event, max_count.
+     */
+    private void handleDifficultyBossBar(Player player, Map<String, Object> config) {
+        if (player == null || config == null || config.isEmpty()) {
+            return;
+        }
+
+        UUID uuid = player.getUniqueId();
+        String title = cleanString(config.get("title"));
+        if (title.isEmpty()) {
+            title = "§e关卡进度";
+        }
+
+        BarColor color = parseBossBarColor(cleanString(config.get("color")));
+        BarStyle style = parseBossBarStyle(cleanString(config.get("style")));
+        double progress = asDoubleOrDefault(config.get("progress"), 0.0);
+        progress = Math.max(0.0, Math.min(1.0, progress));
+
+        // Remove old bar if present
+        BossBar oldBar = difficultyBossBars.remove(uuid);
+        if (oldBar != null) {
+            oldBar.removePlayer(player);
+        }
+
+        BossBar bar = Bukkit.createBossBar(title, color, style);
+        bar.setProgress(progress);
+        bar.addPlayer(player);
+        bar.setVisible(true);
+        difficultyBossBars.put(uuid, bar);
+
+        JavaPlugin plugin = getPlugin();
+        if (plugin != null) {
+            plugin.getLogger().log(Level.FINE,
+                    "[DifficultyAmplifier] BossBar created for player={0} title={1}",
+                    new Object[] { player.getName(), title });
+        }
+    }
+
+    private BarColor parseBossBarColor(String colorName) {
+        if (colorName.isEmpty()) {
+            return BarColor.YELLOW;
+        }
+        try {
+            return BarColor.valueOf(colorName.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return BarColor.YELLOW;
+        }
+    }
+
+    private BarStyle parseBossBarStyle(String styleName) {
+        if (styleName.isEmpty()) {
+            return BarStyle.SOLID;
+        }
+        try {
+            return BarStyle.valueOf(styleName.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return BarStyle.SOLID;
+        }
+    }
+
+    /**
+     * Update an existing BossBar's progress (called when beat advances).
+     */
+    public void updateDifficultyBossBar(Player player, String title, double progress) {
+        if (player == null) {
+            return;
+        }
+        UUID uuid = player.getUniqueId();
+        BossBar bar = difficultyBossBars.get(uuid);
+        if (bar == null) {
+            return;
+        }
+        if (title != null && !title.isEmpty()) {
+            bar.setTitle(title);
+        }
+        bar.setProgress(Math.max(0.0, Math.min(1.0, progress)));
+    }
+
+    /**
+     * Remove a player's difficulty BossBar (called on level exit).
+     */
+    public void removeDifficultyBossBar(Player player) {
+        if (player == null) {
+            return;
+        }
+        BossBar bar = difficultyBossBars.remove(player.getUniqueId());
+        if (bar != null) {
+            bar.removePlayer(player);
+        }
+    }
+
+    // ── DifficultyAmplifier: trigger zone particle visualization ─────────────
+
+    /**
+     * Spawn particle borders around trigger zones that have particle_border config.
+     * This creates a repeating task that renders particle outlines.
+     */
+    private void handleTriggerZoneParticles(Player player, List<?> triggerZones,
+            Map<String, Object> operations) {
+        if (player == null || triggerZones == null || triggerZones.isEmpty()) {
+            return;
+        }
+
+        JavaPlugin plugin = getPlugin();
+        if (plugin == null) {
+            return;
+        }
+
+        // Collect trigger zones that have particle_border config
+        List<Map<String, Object>> particleZones = new ArrayList<>();
+        for (Object tzObj : triggerZones) {
+            if (!(tzObj instanceof Map<?, ?> tzMap)) {
+                continue;
+            }
+            Map<String, Object> tz = filterStringKeys(tzMap);
+            Object borderObj = tz.get("particle_border");
+            if (borderObj instanceof Map<?, ?> borderMap) {
+                Map<String, Object> combined = new LinkedHashMap<>(tz);
+                combined.put("_border_config", filterStringKeys(borderMap));
+                particleZones.add(combined);
+            }
+        }
+
+        if (particleZones.isEmpty()) {
+            return;
+        }
+
+        // Cancel any existing particle task for this player
+        UUID uuid = player.getUniqueId();
+        BukkitRunnable oldTask = triggerZoneParticleTasks.remove(uuid);
+        if (oldTask != null) {
+            try {
+                oldTask.cancel();
+            } catch (IllegalStateException ignored) {
+                // already cancelled
+            }
+        }
+
+        // Determine base position from teleport or player location
+        double baseX = player.getLocation().getX();
+        double baseY = player.getLocation().getY();
+        double baseZ = player.getLocation().getZ();
+
+        Map<String, Object> teleport = null;
+        Object tpObj = operations.get("teleport");
+        if (tpObj instanceof Map<?, ?> tpMap) {
+            teleport = filterStringKeys(tpMap);
+            Double tx = asNullableDouble(teleport.get("x"));
+            Double ty = asNullableDouble(teleport.get("y"));
+            Double tz = asNullableDouble(teleport.get("z"));
+            if (tx != null) baseX = tx;
+            if (ty != null) baseY = ty;
+            if (tz != null) baseZ = tz;
+        }
+
+        final double fx = baseX;
+        final double fy = baseY;
+        final double fz = baseZ;
+
+        // Create repeating task to render particles
+        BukkitRunnable task = new BukkitRunnable() {
+            private int ticks = 0;
+
+            @Override
+            public void run() {
+                if (!player.isOnline()) {
+                    this.cancel();
+                    triggerZoneParticleTasks.remove(uuid);
+                    return;
+                }
+                // Run for 60 seconds max, then stop
+                ticks++;
+                if (ticks > 1200) {
+                    this.cancel();
+                    triggerZoneParticleTasks.remove(uuid);
+                    return;
+                }
+
+                for (Map<String, Object> zone : particleZones) {
+                    renderTriggerZoneParticles(player, zone, fx, fy, fz);
+                }
+            }
+        };
+
+        task.runTaskTimer(plugin, 10L, 10L); // every 0.5 seconds
+        triggerZoneParticleTasks.put(uuid, task);
+
+        plugin.getLogger().log(Level.FINE,
+                "[DifficultyAmplifier] trigger zone particles started for player={0} zones={1}",
+                new Object[] { player.getName(), particleZones.size() });
+    }
+
+    /**
+     * Render particle borders for a single trigger zone.
+     */
+    private void renderTriggerZoneParticles(Player player, Map<String, Object> zone,
+            double baseX, double baseY, double baseZ) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> borderConfig = (Map<String, Object>) zone.get("_border_config");
+        if (borderConfig == null) {
+            return;
+        }
+
+        String particleType = cleanString(borderConfig.get("type"));
+        int count = (int) asDoubleOrDefault(borderConfig.get("count"), 20);
+        int height = (int) asDoubleOrDefault(borderConfig.get("height"), 3);
+
+        Particle particle;
+        try {
+            particle = Particle.valueOf(particleType.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            particle = Particle.END_ROD;
+        }
+
+        // Get trigger zone position (offset from base)
+        double dx = asDoubleOrDefault(zone.get("dx"), asDoubleOrDefault(zone.get("x"), 0));
+        double dy = asDoubleOrDefault(zone.get("dy"), asDoubleOrDefault(zone.get("y"), 0));
+        double dz = asDoubleOrDefault(zone.get("dz"), asDoubleOrDefault(zone.get("z"), 0));
+        double radius = asDoubleOrDefault(zone.get("radius"), 3.0);
+
+        double cx = baseX + dx;
+        double cy = baseY + dy;
+        double cz = baseZ + dz;
+
+        // Render a circle of particles at each height level
+        int pointsPerCircle = Math.max(8, count / Math.max(1, height));
+        for (int h = 0; h < height; h++) {
+            for (int i = 0; i < pointsPerCircle; i++) {
+                double angle = 2 * Math.PI * i / pointsPerCircle;
+                double px = cx + radius * Math.cos(angle);
+                double pz = cz + radius * Math.sin(angle);
+                double py = cy + h;
+
+                Location loc = new Location(player.getWorld(), px, py, pz);
+                player.spawnParticle(particle, loc, 1, 0, 0, 0, 0);
+            }
+        }
+
+        // Beacon effect (vertical particle column)
+        Object beaconObj = zone.get("beacon");
+        if (beaconObj instanceof Map<?, ?> beaconMap) {
+            Map<String, Object> beaconConfig = filterStringKeys(beaconMap);
+            String beaconType = cleanString(beaconConfig.get("type"));
+            int beaconCount = (int) asDoubleOrDefault(beaconConfig.get("count"), 10);
+            int beaconHeight = (int) asDoubleOrDefault(beaconConfig.get("height"), 15);
+
+            Particle beaconParticle;
+            try {
+                beaconParticle = Particle.valueOf(beaconType.toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException e) {
+                beaconParticle = Particle.FLAME;
+            }
+
+            for (int h = 0; h < beaconHeight; h++) {
+                Location loc = new Location(player.getWorld(), cx, cy + h, cz);
+                player.spawnParticle(beaconParticle, loc, beaconCount / beaconHeight + 1, 0.1, 0, 0.1, 0);
+            }
+        }
+    }
+
+    /**
+     * Stop trigger zone particle rendering for a player (called on level exit).
+     */
+    public void stopTriggerZoneParticles(Player player) {
+        if (player == null) {
+            return;
+        }
+        BukkitRunnable task = triggerZoneParticleTasks.remove(player.getUniqueId());
+        if (task != null) {
+            try {
+                task.cancel();
+            } catch (IllegalStateException ignored) {
+                // already cancelled
+            }
+        }
+    }
+
+    /**
+     * Clean up all difficulty-related state for a player.
+     */
+    public void cleanupDifficultyState(Player player) {
+        removeDifficultyBossBar(player);
+        stopTriggerZoneParticles(player);
     }
 
     @Override

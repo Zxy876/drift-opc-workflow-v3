@@ -119,7 +119,7 @@ def call_story_refresh(player_id: str, workflow_id: str, issue: str, summary: st
         "Calling Drift POST /story/refresh player_id=%s workflow_id=%s summary=%.80r",
         player_id, workflow_id, summary,
     )
-    resp = _drift_session.post(f"{DRIFT_URL}/story/refresh", json=body, timeout=30)
+    resp = _drift_session.post(f"{DRIFT_URL}/story/refresh", json=body, timeout=180)
     resp.raise_for_status()
     try:
         data = resp.json()
