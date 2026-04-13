@@ -187,9 +187,14 @@ public class CreateLevelCommand implements CommandExecutor {
 
             // 切回主线程执行 dispatch
             Bukkit.getScheduler().runTask(plugin, () -> {
-                player.sendMessage(ChatColor.AQUA + "📊 难度评分: " + createIntent.difficulty
-                        + "★ | 类型: " + createIntent.sceneType);
-                intentDispatcher2.dispatch(player, createIntent);
+                try {
+                    player.sendMessage(ChatColor.AQUA + "📊 难度评分: " + createIntent.difficulty
+                            + "★ | 类型: " + createIntent.sceneType);
+                    intentDispatcher2.dispatch(player, createIntent);
+                } catch (Exception e) {
+                    plugin.getLogger().warning("[/create] dispatch failed: " + e.getMessage());
+                    fallbackDirectInject(player, text);
+                }
             });
         });
     }
