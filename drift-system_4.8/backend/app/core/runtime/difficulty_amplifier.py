@@ -17,7 +17,7 @@ Difficulty Amplifier — 视觉复杂度放大器
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 
 # ─── 难度等级配置表 ──────────────────────────────────────────────────────────
