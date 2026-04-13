@@ -194,10 +194,60 @@ public class IntentDispatcher2 {
                 p.sendMessage("§e⚠ AsyncAIFlow 未配置，降级为本地 Drift 生成...");
                 createStory(p, intent);
             }
+        } else if ("CONTENT".equals(sceneType)
+                   && intent.difficulty >= asyncAIFlowDifficultyThreshold
+                   && asyncAIFlowClient != null) {
+            // ── Phase 5: 高难度 CONTENT → drift_experience (Beam Search + Arc) ──
+            plugin.getLogger().info(
+                    "[routeCreateStory] high-difficulty CONTENT → drift_experience"
+                    + " player=" + p.getName()
+                    + " difficulty=" + intent.difficulty);
+            p.sendMessage("§6⚛ 难度" + intent.difficulty + "★ — 路由到 Drift Experience (Beam Search + 叙事弧)...");
+            submitToDriftExperience(p, intent);
         } else {
-            // CONTENT 或未知类型 → 直接走 Drift（World-First）
+            // CONTENT 低难度或未知类型 → 直接走 Drift（World-First）
             createStory(p, intent);
         }
+    }
+
+    // ============================================================
+    // Drift Experience: 高难度 CONTENT → drift_experience 工作流
+    // ============================================================
+    private void submitToDriftExperience(Player p, IntentResponse2 intent) {
+        final Player fp = p;
+        final String premise = intent.rawText != null ? intent.rawText.trim() : "";
+        if (premise.isEmpty()) {
+            createStory(fp, intent);
+            return;
+        }
+
+        fp.sendMessage("§e⚙ 正在提交给 Drift Experience 工作流（Beam Search + 叙事弧）...");
+        plugin.getLogger().info("[submitToDriftExperience] player=" + fp.getName()
+                + " difficulty=" + intent.difficulty + " premise=" + premise);
+
+        asyncAIFlowClient.submitDriftExperience(
+                premise,
+                intent.difficulty,
+                fp.getName(),
+                workflowId -> {
+                    Bukkit.getScheduler().runTask((org.bukkit.plugin.java.JavaPlugin) plugin, () -> {
+                        fp.sendMessage("§a✅ Drift Experience 工作流已启动！工作流 #" + workflowId);
+                        fp.sendMessage("§7系统正在进行 Beam Search 多变体探索 + 叙事弧构建...");
+                        fp.sendMessage("§7完成后世界将自动更新。");
+                    });
+                    plugin.getLogger().info("[submitToDriftExperience] workflowId=" + workflowId
+                            + " player=" + fp.getName());
+                    startProgressPolling(fp, workflowId);
+                },
+                errMsg -> {
+                    plugin.getLogger().warning("[submitToDriftExperience] failed: " + errMsg
+                            + " — fallback to standard AsyncAIFlow");
+                    Bukkit.getScheduler().runTask((org.bukkit.plugin.java.JavaPlugin) plugin, () -> {
+                        fp.sendMessage("§e⚠ Drift Experience 不可达，降级为标准 AsyncAIFlow...");
+                        submitToAsyncAIFlow(fp, intent);
+                    });
+                }
+        );
     }
 
     // ============================================================

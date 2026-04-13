@@ -227,7 +227,10 @@ public class DriftPlugin extends JavaPlugin {
         registerCommand("eventdebug", new TaskDebugCommand(this, backend, taskDebugToken, TaskDebugCommand.ViewMode.EVENTDEBUG));
         registerCommand("spawnfragment", new StoryRuntimeToolCommand(this, backend, worldPatcher, StoryRuntimeToolCommand.Mode.SPAWN_FRAGMENT));
         registerCommand("storyreset", new StoryRuntimeToolCommand(this, backend, worldPatcher, StoryRuntimeToolCommand.Mode.STORY_RESET));
-        registerCommand("create", new CreateLevelCommand(this, backend, worldPatcher, payloadExecutor));
+        CreateLevelCommand createLevelCommand = new CreateLevelCommand(this, backend, worldPatcher, payloadExecutor);
+        createLevelCommand.setIntentRouter2(intentRouter2);
+        createLevelCommand.setIntentDispatcher2(intentDispatcher2);
+        registerCommand("create", createLevelCommand);
         registerCommand("driftload", new DriftLoadCommand(this, backend, worldPatcher));
         registerCommand("debugscene", new TaskDebugCommand(this, backend, taskDebugToken, TaskDebugCommand.ViewMode.SCENE));
         registerCommand("debuginventory", new TaskDebugCommand(this, backend, taskDebugToken, TaskDebugCommand.ViewMode.INVENTORY));

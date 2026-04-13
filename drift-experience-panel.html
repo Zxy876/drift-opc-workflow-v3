@@ -302,6 +302,71 @@ textarea { min-height: 80px; }
 }
 .mc-dot { width: 6px; height: 6px; border-radius: 50%; background: #555; flex-shrink: 0; }
 .mc-dot.live { background: var(--green); box-shadow: 0 0 5px var(--green); animation: pulse 2s infinite; }
+
+/* ─── Publish Mode Selector ───────────────────────────────────── */
+.publish-modes {
+  display: flex; gap: 6px; margin-bottom: 6px;
+}
+.publish-mode {
+  flex: 1; padding: 8px 6px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--bg3);
+  cursor: pointer; text-align: center; transition: all 0.2s;
+  font-size: 10px; line-height: 1.4;
+}
+.publish-mode:hover { border-color: var(--blue); }
+.publish-mode.selected { border-color: var(--green); background: #0e221044; }
+.publish-mode .pm-icon { font-size: 18px; display: block; margin-bottom: 2px; }
+.publish-mode .pm-label { font-weight: 700; color: var(--text); }
+.publish-mode .pm-desc { color: var(--text-dim); font-size: 9px; }
+
+/* ─── AsyncAIFlow Workflow Monitor ────────────────────────────── */
+.wf-monitor {
+  border: 1px solid var(--border2); border-radius: var(--radius);
+  background: var(--bg); padding: 8px 10px; margin-top: 4px;
+}
+.wf-monitor-title {
+  font-size: 10px; font-weight: 700; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px;
+}
+.wf-pipeline {
+  display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px;
+}
+.wf-pip-step {
+  padding: 2px 8px; border-radius: 12px; font-size: 9px; font-weight: 600;
+  border: 1px solid var(--border2); background: var(--bg3); color: var(--text-dim);
+  transition: all 0.3s;
+}
+.wf-pip-step.wf-done    { border-color: var(--green); color: var(--green); background: #0e221044; }
+.wf-pip-step.wf-running { border-color: var(--blue); color: var(--blue); background: #0d1f3344; animation: pulse 1.5s infinite; }
+.wf-pip-step.wf-failed  { border-color: var(--red); color: var(--red); background: #32120c44; }
+.wf-status-row {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; padding: 2px 0;
+}
+.wf-status-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.wf-status-dot.pending  { background: #555; }
+.wf-status-dot.running  { background: var(--blue); box-shadow: 0 0 6px var(--blue); animation: pulse 1.5s infinite; }
+.wf-status-dot.completed { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.wf-status-dot.failed   { background: var(--red); }
+
+/* ─── State Graph Visualization ───────────────────────────────── */
+.sg-container {
+  border: 1px solid var(--border2); border-radius: var(--radius);
+  background: var(--bg); padding: 8px 10px;
+}
+.sg-title {
+  font-size: 10px; font-weight: 700; color: var(--purple);
+  text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px;
+}
+.sg-node {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 12px; font-size: 10px;
+  border: 1px solid var(--purple); color: var(--purple);
+  margin: 2px; background: #6e40c911;
+}
+.sg-edge { color: var(--text-dim); font-size: 11px; }
 </style>
 </head>
 <body>
@@ -315,7 +380,8 @@ textarea { min-height: 80px; }
     </div>
   </div>
   <div class="server-row">
-    <input type="text" id="baseUrl" value="http://35.201.132.58:8000" placeholder="Backend URL" />
+    <input type="text" id="baseUrl" value="http://35.201.132.58:8000" placeholder="Backend URL" style="flex:1" />
+    <input type="text" id="asyncUrl" value="http://35.201.132.58:8080" placeholder="AsyncAIFlow URL" style="flex:1;font-size:11px" />
     <div class="status-pill" id="statusPill" onclick="checkHealth()" title="点击检测连接">
       <span class="dot dot-gray" id="statusDot"></span>
       <span id="statusText">未连接</span>
@@ -441,10 +507,39 @@ textarea { min-height: 80px; }
         <label>title（可选）</label>
         <input type="text" id="levelTitle" value="宝石神庙挑战" />
       </div>
+      <!-- Phase 5: Publish Mode Selector -->
+      <div class="publish-modes" id="publishModes">
+        <div class="publish-mode selected" data-mode="quick" onclick="selectPublishMode('quick')">
+          <span class="pm-icon">⚡</span>
+          <span class="pm-label">Quick</span>
+          <span class="pm-desc">直连 Drift</span>
+        </div>
+        <div class="publish-mode" data-mode="standard" onclick="selectPublishMode('standard')">
+          <span class="pm-icon">⚙</span>
+          <span class="pm-label">Standard</span>
+          <span class="pm-desc">AsyncAIFlow Pipeline</span>
+        </div>
+        <div class="publish-mode" data-mode="premium" onclick="selectPublishMode('premium')">
+          <span class="pm-icon">🧠</span>
+          <span class="pm-label">Premium</span>
+          <span class="pm-desc">Beam Search + 叙事弧</span>
+        </div>
+      </div>
       <button class="btn btn-green btn-publish" id="btnPublish" onclick="doPublish()">🚀 Publish to Minecraft</button>
       <div style="display:flex;gap:6px;margin-top:4px">
         <button class="btn btn-sm" style="opacity:.5;flex:1" onclick="doInject()">⚙ Compile Only</button>
         <button class="btn btn-sm btn-cyan" style="opacity:.7;flex:1" onclick="doLoad()">⬇ Reload MC</button>
+      </div>
+      <!-- Phase 5: AsyncAIFlow Workflow Monitor -->
+      <div class="wf-monitor" id="wfMonitor" style="display:none">
+        <div class="wf-monitor-title">AsyncAIFlow Workflow</div>
+        <div class="wf-status-row">
+          <span class="wf-status-dot pending" id="wfStatusDot"></span>
+          <span id="wfStatusLabel">PENDING</span>
+          <span style="margin-left:auto;font-size:10px;color:var(--text-dim)" id="wfIdLabel"></span>
+        </div>
+        <div class="wf-pipeline" id="wfPipeline"></div>
+        <div id="wfWorldPatch" style="display:none;font-size:10px;color:var(--text-dim)"></div>
       </div>
       <div class="result-block empty" id="injectResult">满意后点击发布到 Minecraft</div>
     </div>
@@ -530,7 +625,11 @@ textarea { min-height: 80px; }
 /* ─── Globals ──────────────────────────────────────────────────── */
 const $ = id => document.getElementById(id)
 const BASE = () => ($('baseUrl').value || 'http://localhost:8000').replace(/\/$/, '')
+const ASYNC_BASE = () => ($('asyncUrl').value || 'http://localhost:8080').replace(/\/$/, '')
 let _pollTimer = null
+let _publishMode = 'quick'   // quick | standard | premium
+let _wfPollTimer = null      // AsyncAIFlow workflow polling timer
+let _activeWorkflowId = null // current workflow being monitored
 
 /* ─── HTTP helpers ─────────────────────────────────────────────── */
 async function api(method, path, body) {
@@ -593,6 +692,30 @@ async function checkHealth() {
     dot.className = 'dot dot-red'; txt.textContent = '无法连接'
     toast('连接失败: ' + e.message, 'err')
   }
+}
+
+/* ─── AsyncAIFlow API helpers ─────────────────────────────────── */
+async function asyncApi(method, path, body) {
+  const url = ASYNC_BASE() + path
+  const opts = { method, headers: { 'Content-Type': 'application/json' } }
+  if (body !== undefined) opts.body = JSON.stringify(body)
+  const r = await fetch(url, opts)
+  if (!r.ok) {
+    const txt = await r.text().catch(() => '')
+    throw new Error(`HTTP ${r.status}: ${txt.slice(0, 200)}`)
+  }
+  return r.json()
+}
+
+/* ─── Publish Mode Selector ───────────────────────────────────── */
+function selectPublishMode(mode) {
+  _publishMode = mode
+  document.querySelectorAll('.publish-mode').forEach(el => {
+    el.classList.toggle('selected', el.dataset.mode === mode)
+  })
+  // Update publish button text
+  const labels = { quick: '⚡ Quick Publish', standard: '⚙ Standard Publish (AsyncAIFlow)', premium: '🧠 Premium Publish (Beam Search)' }
+  $('btnPublish').textContent = labels[mode] || '🚀 Publish to Minecraft'
 }
 
 /* ─────────────────────────────────────────────────────────────────
@@ -923,7 +1046,7 @@ function setWorkflowStep(n) {
 }
 
 /* ─────────────────────────────────────────────────────────────────
-   ② Publish: inject + load combined
+   ② Publish: inject + load combined (Phase 5: multi-mode)
 ──────────────────────────────────────────────────────────────── */
 async function doPublish() {
   const btn = event.target
@@ -932,8 +1055,24 @@ async function doPublish() {
   const playerId = $('playerId').value.trim()
   if (!levelId || !playerId) { toast('请填写 level_id 和 player_id', 'err'); return }
   if (!text) { toast('请先在 Design 面板输入描述', 'err'); return }
+
+  // Phase 5: Route based on selected publish mode
+  if (_publishMode === 'standard') {
+    await doPublishAsyncAIFlow(btn, text, levelId, playerId, 3)
+    return
+  }
+  if (_publishMode === 'premium') {
+    await doPublishAsyncAIFlow(btn, text, levelId, playerId, 5)
+    return
+  }
+
+  // Quick mode: original direct Drift publish
+  await doPublishQuick(btn, text, levelId, playerId)
+}
+
+/** Quick Publish: direct Drift inject + push-load (original behavior) */
+async function doPublishQuick(btn, text, levelId, playerId) {
   await withSpin(btn, async () => {
-    // Step 1: inject (compile & save)
     const ri = await POST('/story/inject', {
       level_id: levelId,
       title: $('levelTitle').value || levelId,
@@ -941,7 +1080,6 @@ async function doPublish() {
     })
     const es = ri.experience_spec_summary || {}
     $('injectBadge').textContent = '✓ published'
-    // Step 2: push-load → RCON → Plugin 立即加载给玩家（失败时降级为仅存储）
     let pushOk = false
     let pushMsg = ''
     try {
@@ -975,6 +1113,265 @@ async function doPublish() {
     toast(pushOk ? `🚀 ${levelId} 已推送到 Minecraft！` : `💾 ${levelId} 已保存（玩家不在线）`, 'ok')
     await doRefreshState()
   }).catch(e => { toast('Publish 失败: ' + e.message, 'err') })
+}
+
+/** Standard / Premium Publish: submit to AsyncAIFlow, then poll workflow status */
+async function doPublishAsyncAIFlow(btn, text, levelId, playerId, difficulty) {
+  await withSpin(btn, async () => {
+    // Submit to AsyncAIFlow /planner/execute
+    const body = {
+      issue: text,
+      repo_context: difficulty >= 5 ? 'drift_experience' : 'drift-system',
+      difficulty: difficulty,
+      player_id: playerId,
+    }
+    const r = await asyncApi('POST', '/planner/execute', body)
+
+    // Extract workflowId from response
+    const data = r.data || r
+    const workflowId = data.workflowId || data.workflow_id
+    if (!workflowId) {
+      throw new Error('AsyncAIFlow 未返回 workflowId')
+    }
+
+    _activeWorkflowId = workflowId
+    $('injectBadge').textContent = '⚙ workflow #' + workflowId
+
+    // Show workflow monitor
+    showWorkflowMonitor(workflowId, difficulty)
+
+    // Start polling
+    startWorkflowPolling(workflowId, playerId, levelId)
+
+    const el = $('injectResult')
+    el.className = 'result-block'
+    el.innerHTML = kv('status', 'workflow submitted', 'blue')
+      + kv('workflowId', esc(String(workflowId)), 'cyan')
+      + kv('difficulty', String(difficulty) + '★', 'purple')
+      + kv('mode', difficulty >= 5 ? 'drift_experience (Beam Search + Arc)' : 'AsyncAIFlow Pipeline', 'blue')
+
+    toast(`AsyncAIFlow 工作流 #${workflowId} 已提交！`, 'ok')
+  }).catch(e => { toast('AsyncAIFlow 提交失败: ' + e.message, 'err') })
+}
+
+/** Show the embedded workflow monitor panel */
+function showWorkflowMonitor(workflowId, difficulty) {
+  const monitor = $('wfMonitor')
+  monitor.style.display = 'block'
+  $('wfIdLabel').textContent = '#' + workflowId
+  $('wfStatusDot').className = 'wf-status-dot running'
+  $('wfStatusLabel').textContent = 'RUNNING'
+  $('wfStatusLabel').style.color = 'var(--blue)'
+
+  // Build pipeline steps based on difficulty
+  const steps = difficulty >= 5
+    ? ['🔎 Search', '📋 Plan', '💻 Code', '🔍 Review', '🧪 Test', '🚀 Deploy', '📌 Git Push', '🌊 Refresh']
+    : difficulty >= 4
+    ? ['📋 Plan', '💻 Code', '🔍 Review', '🧪 Test', '🚀 Deploy', '📌 Git Push', '🌊 Refresh']
+    : ['📋 Plan', '💻 Code', '🔍 Review', '🚀 Deploy', '🌊 Refresh']
+
+  $('wfPipeline').innerHTML = steps.map((s, i) =>
+    `<span class="wf-pip-step" id="wfPip${i}">${s}</span>`
+  ).join('')
+  $('wfWorldPatch').style.display = 'none'
+}
+
+/** Poll AsyncAIFlow workflow status every 3s */
+function startWorkflowPolling(workflowId, playerId, levelId) {
+  if (_wfPollTimer) clearInterval(_wfPollTimer)
+  let pollCount = 0
+  const maxPolls = 200  // ~10 min max
+  let _wfSettled = false  // guard against overlapping async callbacks
+
+  const myTimer = setInterval(async () => {
+    if (_wfSettled) return  // already settled, skip overlapping callback
+    if (_wfPollTimer !== myTimer) return  // superseded by a newer polling session
+    pollCount++
+    if (pollCount > maxPolls) {
+      clearInterval(myTimer)
+      if (_wfPollTimer === myTimer) _wfPollTimer = null
+      $('wfStatusDot').className = 'wf-status-dot failed'
+      $('wfStatusLabel').textContent = 'TIMEOUT'
+      $('wfStatusLabel').style.color = 'var(--red)'
+      toast('工作流轮询超时', 'err')
+      return
+    }
+
+    try {
+      const r = await asyncApi('GET', '/workflows/' + workflowId)
+      const wf = r.data || r
+      const status = (wf.status || '').toUpperCase()
+
+      // Update status indicator
+      if (status === 'SUCCEEDED' || status === 'COMPLETED') {
+        _wfSettled = true
+        clearInterval(myTimer)
+        if (_wfPollTimer === myTimer) _wfPollTimer = null
+        $('wfStatusDot').className = 'wf-status-dot completed'
+        $('wfStatusLabel').textContent = 'COMPLETED'
+        $('wfStatusLabel').style.color = 'var(--green)'
+        $('injectBadge').textContent = '✓ completed'
+
+        // Mark all pipeline steps as done
+        document.querySelectorAll('.wf-pip-step').forEach(el => {
+          el.classList.remove('wf-running')
+          el.classList.add('wf-done')
+        })
+
+        toast('工作流完成！世界正在更新...', 'ok')
+        setWorkflowStep(4)
+
+        // Sync timeline and state
+        await syncAfterWorkflow(workflowId, playerId, levelId)
+
+      } else if (status === 'FAILED') {
+        _wfSettled = true
+        clearInterval(myTimer)
+        if (_wfPollTimer === myTimer) _wfPollTimer = null
+        $('wfStatusDot').className = 'wf-status-dot failed'
+        $('wfStatusLabel').textContent = 'FAILED'
+        $('wfStatusLabel').style.color = 'var(--red)'
+        $('injectBadge').textContent = '✗ failed'
+        toast('工作流执行失败', 'err')
+
+      } else {
+        $('wfStatusDot').className = 'wf-status-dot running'
+        $('wfStatusLabel').textContent = status || 'RUNNING'
+        $('wfStatusLabel').style.color = 'var(--blue)'
+      }
+
+      // Update pipeline step indicators from actions
+      updatePipelineSteps(wf)
+
+    } catch (e) {
+      // Silently retry on transient errors
+    }
+  }, 3000)
+  _wfPollTimer = myTimer
+}
+
+/** Update pipeline step indicators based on workflow action statuses */
+function updatePipelineSteps(wf) {
+  const actions = wf.actions || []
+  const pipSteps = document.querySelectorAll('.wf-pip-step')
+  actions.forEach((a, i) => {
+    if (i >= pipSteps.length) return
+    const st = (a.status || '').toUpperCase()
+    pipSteps[i].classList.remove('wf-done', 'wf-running', 'wf-failed')
+    if (st === 'SUCCEEDED' || st === 'COMPLETED') pipSteps[i].classList.add('wf-done')
+    else if (st === 'RUNNING' || st === 'IN_PROGRESS') pipSteps[i].classList.add('wf-running')
+    else if (st === 'FAILED') pipSteps[i].classList.add('wf-failed')
+  })
+}
+
+/** After workflow completes, sync timeline and fetch world_patch */
+async function syncAfterWorkflow(workflowId, playerId, levelId) {
+  try {
+    // Try to fetch world_patch from workflow result
+    const r = await asyncApi('GET', '/workflows/' + workflowId)
+    const wf = r.data || r
+    const actions = wf.actions || []
+
+    // Look for drift_refresh action result containing world_patch
+    let worldPatch = null
+    let stateGraph = null
+    for (const a of actions) {
+      const result = a.result || {}
+      if (result.world_patch) worldPatch = result.world_patch
+      if (result.state_graph) stateGraph = result.state_graph
+    }
+
+    // Display world_patch in monitor
+    if (worldPatch) {
+      const wpEl = $('wfWorldPatch')
+      wpEl.style.display = 'block'
+      const patchPreview = JSON.stringify(worldPatch, null, 2)
+      wpEl.innerHTML = `<div style="margin-top:4px"><span class="k">world_patch:</span></div>
+        <pre style="font-size:9px;max-height:120px;overflow:auto;background:var(--bg3);padding:6px;border-radius:4px;margin-top:2px">${esc(patchPreview.slice(0, 500))}</pre>`
+    }
+
+    // Display State Graph in timeline panel if available
+    if (stateGraph) {
+      renderStateGraph(stateGraph)
+    }
+
+    // Add workflow completion event to timeline
+    addWorkflowEventToTimeline(workflowId, actions)
+
+    // Refresh state and timeline from backend
+    await Promise.all([doRefreshState(), doRefreshTimeline()])
+
+  } catch (e) {
+    // Non-critical: just refresh from backend
+    await Promise.all([doRefreshState(), doRefreshTimeline()])
+  }
+}
+
+/** Render State Graph visualization in timeline panel */
+function renderStateGraph(stateGraph) {
+  const nodes = stateGraph.nodes || stateGraph.states || []
+  const edges = stateGraph.edges || stateGraph.transitions || []
+  if (!nodes.length && !edges.length) return
+
+  const container = document.createElement('div')
+  container.className = 'sg-container'
+  container.innerHTML = `<div class="sg-title">State Graph</div>`
+
+  // Render nodes
+  let nodesHtml = ''
+  if (Array.isArray(nodes)) {
+    nodes.forEach(n => {
+      const label = typeof n === 'string' ? n : (n.name || n.id || JSON.stringify(n))
+      nodesHtml += `<span class="sg-node">${esc(label)}</span>`
+    })
+  }
+
+  // Render edges
+  let edgesHtml = ''
+  if (Array.isArray(edges)) {
+    edges.forEach(e => {
+      const from = typeof e === 'object' ? (e.from || e.source || '') : ''
+      const to = typeof e === 'object' ? (e.to || e.target || '') : ''
+      const label = typeof e === 'object' ? (e.label || e.event || '') : String(e)
+      if (from && to) {
+        edgesHtml += `<div style="font-size:10px;padding:1px 0">
+          <span class="sg-node" style="font-size:9px;padding:1px 6px">${esc(from)}</span>
+          <span class="sg-edge"> →${label ? ' ['+esc(label)+']' : ''} → </span>
+          <span class="sg-node" style="font-size:9px;padding:1px 6px">${esc(to)}</span>
+        </div>`
+      }
+    })
+  }
+
+  container.innerHTML += nodesHtml ? `<div style="margin:4px 0">${nodesHtml}</div>` : ''
+  container.innerHTML += edgesHtml
+
+  // Append to timeline panel
+  const timelineList = $('timelineList')
+  timelineList.insertBefore(container, timelineList.firstChild)
+}
+
+/** Add workflow events to the timeline panel */
+function addWorkflowEventToTimeline(workflowId, actions) {
+  const timelineList = $('timelineList')
+  if (timelineList.classList.contains('empty')) {
+    timelineList.classList.remove('empty')
+    timelineList.textContent = ''
+  }
+
+  // Add completed workflow event at top
+  const entry = document.createElement('div')
+  entry.className = 'tl-entry'
+  entry.innerHTML = `
+    <div class="tl-dot" style="background:var(--green)"></div>
+    <div class="tl-content">
+      <div class="tl-event">AsyncAIFlow Workflow #${esc(String(workflowId))}
+        <span class="tl-win" style="margin-left:6px;font-size:11px">COMPLETED</span>
+      </div>
+      <div class="tl-meta">${actions.length} actions · ${new Date().toLocaleTimeString()}</div>
+    </div>`
+  timelineList.insertBefore(entry, timelineList.firstChild)
+  $('timelineBadge').textContent = 'synced'
 }
 
 async function fireEvent(questEvent, extraPayload = {}) {
