@@ -29,6 +29,11 @@ from app.core.story.level_schema import (
     EmotionalWorldPatchConfig,
 )
 from app.core.events.event_manager import EventManager
+from app.core.runtime.difficulty_amplifier import (
+    amplify_world_patch,
+    amplify_beat_patch,
+    infer_difficulty_from_spec,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -1190,6 +1195,20 @@ class StoryEngine:
         base_patch["mc"] = base_mc
 
         # ---------------------------------------------
+        # 🎯 DifficultyAmplifier：根据难度等级放大视觉
+        # ---------------------------------------------
+        level_meta = level.meta or {}
+        difficulty = self._resolve_difficulty(level)
+        if difficulty >= 1:
+            amplify_world_patch(
+                base_patch,
+                difficulty,
+                level_meta=level_meta,
+                level_title=level.title,
+            )
+            p["_difficulty"] = difficulty
+
+        # ---------------------------------------------
         # 🤖 注册NPC行为到引擎
         # ---------------------------------------------
         spawn_data = base_mc.get("spawn")
@@ -1819,6 +1838,20 @@ class StoryEngine:
                     ref=beat_id,
                 )
 
+        # ── DifficultyAmplifier：beat 视觉增强 ──────────────────────
+        _difficulty = player_state.get("_difficulty", 1)
+        if _difficulty >= 2:
+            _beat_state = player_state.get("beat_state") or {}
+            _total_beats = len(_beat_state.get("order", []))
+            _completed = len(_beat_state.get("completed", set()))
+            amplify_beat_patch(
+                beat_patch,
+                _difficulty,
+                beat_index=max(0, _completed - 1),
+                total_beats=max(1, _total_beats),
+                beat_id=beat_id,
+            )
+
         return {
             "world_patch": beat_patch,
             "node": node,
@@ -2139,6 +2172,54 @@ class StoryEngine:
             update = self._activate_beat(player_id, bid, level, source="rule_event", context=payload)
             if update:
                 self._queue_beat_update(player_id, update)
+
+    # ============================================================
+    # 难度推断（从 level metadata / experience_spec 推导）
+    # ============================================================
+    def _resolve_difficulty(self, level: Level) -> int:
+        """
+        从 level 元数据推断 difficulty 等级 (1-5)。
+
+        优先级：
+        1. level.meta["difficulty"]（显式设置）
+        2. 从 experience_spec 自动推断
+        3. 默认 1
+        """
+        meta = level.meta or {}
+
+        # 显式设置的 difficulty
+        explicit = meta.get("difficulty")
+        if isinstance(explicit, int) and 1 <= explicit <= 5:
+            return explicit
+        if isinstance(explicit, str):
+            try:
+                val = int(explicit)
+                if 1 <= val <= 5:
+                    return val
+            except (ValueError, TypeError):
+                pass
+
+        # 从 experience_spec 自动推断
+        exp_spec = meta.get("experience_spec")
+        if isinstance(exp_spec, dict):
+            return infer_difficulty_from_spec(exp_spec)
+
+        # 从 triggers / beats 数量粗略推断
+        raw_payload = getattr(level, "_raw_payload", None)
+        if isinstance(raw_payload, dict):
+            triggers = raw_payload.get("triggers")
+            beats = raw_payload.get("beats")
+            trigger_count = len(triggers) if isinstance(triggers, list) else 0
+            beat_count = len(beats) if isinstance(beats, list) else 0
+            score = trigger_count + beat_count * 2
+            if score >= 12:
+                return 4
+            if score >= 6:
+                return 3
+            if score >= 3:
+                return 2
+
+        return 1
 
     # ============================================================
     # 自由模式关卡（无正式 level 时的 fallback）

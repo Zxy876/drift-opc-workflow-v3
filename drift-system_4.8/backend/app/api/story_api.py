@@ -2940,6 +2940,7 @@ class InjectPayload(BaseModel):
     anchor: Optional[str] = None
     scene_theme: Optional[str] = None
     scene_hint: Optional[str] = None
+    difficulty: Optional[int] = None  # 难度等级 1-5（可选，不填则自动推断）
 
 
 SCENE_ANCHOR_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
@@ -3337,8 +3338,15 @@ def _bridge_exp_spec_to_world_patch(
     }
 
 
-def _build_level_document(level_id: str, title: str, text: str, bootstrap_patch: Dict[str, Any]) -> Dict[str, Any]:
-    return {
+def _build_level_document(
+    level_id: str,
+    title: str,
+    text: str,
+    bootstrap_patch: Dict[str, Any],
+    *,
+    difficulty: Optional[int] = None,
+) -> Dict[str, Any]:
+    doc: Dict[str, Any] = {
         "id": level_id,
         "title": title,
         "text": [text],
@@ -3351,6 +3359,9 @@ def _build_level_document(level_id: str, title: str, text: str, bootstrap_patch:
         "world_patch": bootstrap_patch,
         "tree": None,
     }
+    if difficulty is not None and isinstance(difficulty, int) and 1 <= difficulty <= 5:
+        doc["meta"]["difficulty"] = difficulty
+    return doc
 
 
 def _as_bool_env(name: str, default: bool = False) -> bool:
@@ -3609,6 +3620,7 @@ def api_story_inject(payload: InjectPayload):
                 title=payload.title,
                 text=payload.text,
                 bootstrap_patch=payload_with_scene,
+                difficulty=payload.difficulty,
             )
             level_doc["meta"] = dict(level_doc.get("meta") or {})
             level_doc["meta"]["trng_transaction"] = _transaction_meta_payload(transaction_result)
@@ -3760,6 +3772,7 @@ def api_story_inject(payload: InjectPayload):
                 title=payload.title,
                 text=payload.text,
                 bootstrap_patch=payload_with_scene,
+                difficulty=payload.difficulty,
             )
             level_doc["meta"] = dict(level_doc.get("meta") or {})
             level_doc["meta"]["trng_transaction"] = _transaction_meta_payload(transaction_result)
@@ -3939,6 +3952,7 @@ def api_story_inject(payload: InjectPayload):
         title=payload.title,
         text=payload.text,
         bootstrap_patch=bootstrap_patch,
+        difficulty=payload.difficulty,
     )
     data["meta"] = dict(data.get("meta") or {})
     data["meta"]["trng_transaction"] = _transaction_meta_payload(transaction_result)
