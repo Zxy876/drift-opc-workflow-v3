@@ -1183,12 +1183,13 @@ function startWorkflowPolling(workflowId, playerId, levelId) {
   const maxPolls = 200  // ~10 min max
   let _wfSettled = false  // guard against overlapping async callbacks
 
-  _wfPollTimer = setInterval(async () => {
+  const myTimer = setInterval(async () => {
     if (_wfSettled) return  // already settled, skip overlapping callback
+    if (_wfPollTimer !== myTimer) return  // superseded by a newer polling session
     pollCount++
     if (pollCount > maxPolls) {
-      clearInterval(_wfPollTimer)
-      _wfPollTimer = null
+      clearInterval(myTimer)
+      if (_wfPollTimer === myTimer) _wfPollTimer = null
       $('wfStatusDot').className = 'wf-status-dot failed'
       $('wfStatusLabel').textContent = 'TIMEOUT'
       $('wfStatusLabel').style.color = 'var(--red)'
@@ -1204,8 +1205,8 @@ function startWorkflowPolling(workflowId, playerId, levelId) {
       // Update status indicator
       if (status === 'SUCCEEDED' || status === 'COMPLETED') {
         _wfSettled = true
-        clearInterval(_wfPollTimer)
-        _wfPollTimer = null
+        clearInterval(myTimer)
+        if (_wfPollTimer === myTimer) _wfPollTimer = null
         $('wfStatusDot').className = 'wf-status-dot completed'
         $('wfStatusLabel').textContent = 'COMPLETED'
         $('wfStatusLabel').style.color = 'var(--green)'
@@ -1225,8 +1226,8 @@ function startWorkflowPolling(workflowId, playerId, levelId) {
 
       } else if (status === 'FAILED') {
         _wfSettled = true
-        clearInterval(_wfPollTimer)
-        _wfPollTimer = null
+        clearInterval(myTimer)
+        if (_wfPollTimer === myTimer) _wfPollTimer = null
         $('wfStatusDot').className = 'wf-status-dot failed'
         $('wfStatusLabel').textContent = 'FAILED'
         $('wfStatusLabel').style.color = 'var(--red)'
@@ -1246,6 +1247,7 @@ function startWorkflowPolling(workflowId, playerId, levelId) {
       // Silently retry on transient errors
     }
   }, 3000)
+  _wfPollTimer = myTimer
 }
 
 /** Update pipeline step indicators based on workflow action statuses */
