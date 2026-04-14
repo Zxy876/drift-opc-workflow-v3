@@ -8,6 +8,11 @@
 #   bash run.sh demo_rl_001 3
 #   bash run.sh demo_rl_001 5 --premium --model checkpoints/player_ppo_demo.pth
 #   bash run.sh demo_rl_001 3 --curriculum --generations 15
+#   额外参数: --premium --curriculum --player-id <ID> --model <path> 等
+#
+# 环境变量:
+#   PLAYER_ID   自定义玩家 ID（等同于传入 --player-id <ID>）
+#   OPENAI_API_KEY  必须设置
 
 set -e
 
@@ -25,6 +30,15 @@ while [[ $# -gt 0 ]]; do
     EXTRA_ARGS+=("$1")
     shift
 done
+
+# 若设置了 PLAYER_ID 环境变量且 EXTRA_ARGS 中尚未指定 --player-id，则自动加入
+if [ -n "$PLAYER_ID" ]; then
+    has_player_id=0
+    for arg in "${EXTRA_ARGS[@]}"; do
+        [[ "$arg" == "--player-id" ]] && has_player_id=1 && break
+    done
+    [[ $has_player_id -eq 0 ]] && EXTRA_ARGS+=("--player-id" "$PLAYER_ID")
+fi
 
 echo "=========================================="
 echo " Drift RL Agent — 双环自进化系统"

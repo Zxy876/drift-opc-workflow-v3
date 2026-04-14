@@ -127,22 +127,42 @@ class DesignerAgent:
         target_difficulty: int = 3,
         theme: str = "森林冒险",
         level_type: str = "探索收集",
+        max_retries: int = 3,
     ) -> dict:
-        """生成全新关卡设计"""
+        """生成全新关卡设计（带重试和降级）"""
         prompt = NEW_LEVEL_PROMPT.format(
             target_difficulty=target_difficulty,
             theme=theme,
             level_type=level_type,
         )
 
-        resp = self.llm.chat.completions.create(
-            model=self.llm_model,
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            temperature=0.8,
-        )
+        last_err = None
+        for attempt in range(max_retries):
+            try:
+                resp = self.llm.chat.completions.create(
+                    model=self.llm_model,
+                    messages=[{"role": "user", "content": prompt}],
+                    response_format={"type": "json_object"},
+                    temperature=0.8,
+                )
+                result = json.loads(resp.choices[0].message.content)
+                if "design_text" not in result or not result["design_text"]:
+                    raise ValueError("LLM 响应缺少 design_text 字段")
+                return result
+            except Exception as e:
+                last_err = e
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt
+                    print(f"[Designer] 新关卡生成失败 (尝试 {attempt + 1}/{max_retries}), {wait}s 后重试: {e}")
+                    time.sleep(wait)
 
-        return json.loads(resp.choices[0].message.content)
+        print(f"[Designer] 新关卡生成全部失败，使用默认设计: {last_err}")
+        return {
+            "design_text": f"在{theme}中进行{level_type}冒险。难度 D{target_difficulty}。",
+            "difficulty": target_difficulty,
+            "reasoning": "LLM 调用失败，使用默认设计",
+            "changes": [],
+        }
 
     def publish_to_drift(
         self,
@@ -207,36 +227,50 @@ class DesignerAgent:
         raise requests.RequestException(f"Quick Publish 3 次均失败: {last_err}")
 
     def _publish_premium(self, text: str, level_id: str, player_id: str, difficulty: int) -> dict:
-        """Premium Publish: POST /planner/execute → 轮询工作流"""
-        resp = requests.post(
-            f"{self.async_url}/planner/execute",
-            json={
-                "issue": text,
-                "repo_context": "drift_experience" if difficulty >= 5 else "drift-system",
-                "difficulty": difficulty,
-                "player_id": player_id,
-            },
-            timeout=30,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        workflow_id = (
-            data.get("data", {}).get("workflowId")
-            or data.get("workflowId")
-            or data.get("data", {}).get("workflow_id")
-        )
+        """Premium Publish: POST /planner/execute → 轮询工作流（带 3 次重试）"""
+        last_err = None
+        for attempt in range(3):
+            try:
+                resp = requests.post(
+                    f"{self.async_url}/planner/execute",
+                    json={
+                        "issue": text,
+                        "repo_context": "drift_experience" if difficulty >= 5 else "drift-system",
+                        "difficulty": difficulty,
+                        "player_id": player_id,
+                    },
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                workflow_id = (
+                    data.get("data", {}).get("workflowId")
+                    or data.get("workflowId")
+                    or data.get("data", {}).get("workflow_id")
+                )
 
-        if not workflow_id:
-            return {"method": "premium", "status": "error", "msg": "未获取到 workflowId"}
+                if not workflow_id:
+                    return {"method": "premium", "status": "error", "msg": "未获取到 workflowId"}
 
-        # 轮询等待工作流完成
-        result = self._wait_for_workflow(workflow_id)
-        return {"method": "premium", "workflow_id": workflow_id, "result": result}
+                # 轮询等待工作流完成
+                result = self._wait_for_workflow(workflow_id)
+                return {"method": "premium", "workflow_id": workflow_id, "result": result}
+
+            except requests.RequestException as e:
+                last_err = e
+                if attempt < 2:
+                    print(f"[Designer] Premium Publish 失败 (尝试 {attempt + 1}/3), 5s 后重试: {e}")
+                    time.sleep(5)
+
+        raise requests.RequestException(f"Premium Publish 3 次均失败: {last_err}")
 
     def _wait_for_workflow(self, workflow_id) -> dict:
         """轮询 AsyncAIFlow 工作流状态"""
         start = time.time()
+        poll_count = 0
+        print(f"[Designer] 开始轮询工作流 {workflow_id} (超时={self.workflow_timeout}s)")
         while time.time() - start < self.workflow_timeout:
+            poll_count += 1
             try:
                 resp = requests.get(
                     f"{self.async_url}/workflows/{workflow_id}",
@@ -244,17 +278,29 @@ class DesignerAgent:
                 )
                 data = resp.json().get("data", resp.json())
                 status = (data.get("status") or "").upper()
+                elapsed = int(time.time() - start)
 
                 if status in ("COMPLETED", "SUCCEEDED"):
+                    print(f"[Designer] 工作流完成 ({elapsed}s, {poll_count} 次轮询)")
                     return {"status": "completed", "data": data}
                 if status == "FAILED":
+                    print(f"[Designer] 工作流失败 ({elapsed}s)")
                     return {"status": "failed", "data": data}
 
-            except requests.RequestException:
-                pass
+                # 每 30 秒输出一次进度
+                if poll_count % 6 == 0:
+                    current_step = data.get("currentStep") or data.get("current_step") or "?"
+                    print(f"[Designer] 工作流进行中... status={status}, step={current_step}, elapsed={elapsed}s")
+
+            except requests.RequestException as e:
+                elapsed = int(time.time() - start)
+                if poll_count % 6 == 0:
+                    print(f"[Designer] 工作流轮询出错 ({elapsed}s): {e}")
 
             time.sleep(self.workflow_poll_interval)
 
+        elapsed = int(time.time() - start)
+        print(f"[Designer] 工作流超时 ({elapsed}s, {poll_count} 次轮询)")
         return {"status": "timeout"}
 
     def get_existing_levels(self) -> list:

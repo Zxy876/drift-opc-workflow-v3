@@ -164,7 +164,7 @@ class MetaAgent:
                 self.best_completion_rate = cr
                 self.best_generation = gen
                 ckpt_path = os.path.join(self.checkpoint_dir, f"best_{level_id}.pth")
-                torch.save(self._policy.state_dict(), ckpt_path)
+                torch.save({"actor": self._policy.state_dict()}, ckpt_path)
                 print(f"[Meta] 最佳模型已保存 (gen={gen}, cr={cr:.0%}): {ckpt_path}")
             # 检查 Flow Zone
             if self.flow_zone_min <= cr <= self.flow_zone_max:

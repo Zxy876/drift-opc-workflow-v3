@@ -227,10 +227,16 @@ class DriftMineflayerEnv(gym.Env):
 
         # 重置关卡
         self._send({"type": "reset", "level_id": self.level_id})
-        time.sleep(3)  # 等待关卡加载
 
-        # 获取初始状态
-        state = self._send({"type": "get_state"})
+        # 等待关卡加载（最多 10 秒，每 1 秒检查一次）
+        for _ in range(10):
+            time.sleep(1)
+            state = self._send({"type": "get_state"})
+            if state.get("error") != "bot_not_ready":
+                break
+        else:
+            print(f"[Env] 警告: 关卡加载超时 (10s)，继续使用当前状态")
+            state = self._send({"type": "get_state"})
         self.prev_state = state
         obs = self._state_to_obs(state)
 
@@ -280,11 +286,12 @@ class DriftMineflayerEnv(gym.Env):
         # NPC 交互检测
         npc_interacted = int(cmd_type) == 4  # /talk 命令
 
-        # 死亡检测
-        died = state.get("health", 20) <= 0 or state.get("last_death_cause") is not None
+        # 死亡检测：R2 保证 last_death_cause 只返回一次
+        death_cause = state.get("last_death_cause")
+        died = death_cause is not None or state.get("health", 20) <= 0
         if died:
             self.episode_deaths += 1
-            cause = state.get("last_death_cause", "unknown")
+            cause = death_cause or "unknown"
             self.episode_death_causes.append(cause)
 
         # 通关检测
