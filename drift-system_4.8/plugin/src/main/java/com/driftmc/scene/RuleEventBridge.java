@@ -687,6 +687,7 @@ public final class RuleEventBridge {
                         root = JsonParser.parseString(body).getAsJsonObject();
                     } catch (Exception ex) {
                         plugin.getLogger().warning("[AutoAdvance] JSON 解析失败: " + ex.getMessage());
+                        advancingPlayers.remove(playerId);
                         return;
                     }
 
