@@ -81,6 +81,7 @@ def main():
         designer=designer,
         bot_port=args.bot_port,
         drift_url=args.drift_url,
+        single_skill=args.skill,
     )
 
     # 覆盖配置参数

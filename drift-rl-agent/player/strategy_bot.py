@@ -204,7 +204,7 @@ class StrategyBot:
         # ── 4. COLLECT: 收集附近物品 ──
         items = [
             e for e in entities
-            if e.get("type") == "object" or e.get("type") == "item"
+            if (e.get("type") == "object" or e.get("type") == "item")
             and self._entity_dist(e) < self.profile["collect_item_dist"]
         ]
         if items:

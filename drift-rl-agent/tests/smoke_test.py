@@ -106,10 +106,18 @@ def main():
         assert set(EPISODES_PER_SKILL.keys()) == {"beginner", "average", "expert"}
         assert all(isinstance(v, int) and v > 0 for v in EPISODES_PER_SKILL.values())
 
+    def test_load_episodes_per_skill():
+        from skill_profiles import load_episodes_per_skill
+        eps = load_episodes_per_skill()
+        assert set(eps.keys()) == {"beginner", "average", "expert"}
+        assert all(isinstance(v, int) and v > 0 for v in eps.values())
+        assert sum(eps.values()) == 20, f"总局数应为 20, 实际 {sum(eps.values())}"
+
     test("技能档案加载（3个档案）", test_skill_profiles_load)
     test("average 档案字段类型", test_skill_profile_get)
     test("未知技能名抛出 ValueError", test_skill_profile_unknown)
     test("EPISODES_PER_SKILL 格式", test_episodes_per_skill)
+    test("episodes_per_skill 加载", test_load_episodes_per_skill)
 
     # ─── 3. StrategyBot 核心逻辑 ───
     print("\n[3] StrategyBot...")
@@ -127,6 +135,29 @@ def main():
 
     test("_entity_dist 勾股定理", test_strategy_bot_entity_dist)
     test("_entity_dist 零距离", test_strategy_bot_entity_dist_zero)
+
+    def test_strategy_bot_collect_filter():
+        """COLLECT 过滤器应同时检查 type 和距离（运算符优先级 F1 修复验证）"""
+        from strategy_bot import StrategyBot
+        far_object = {"type": "object", "rel_x": 100, "rel_y": 0, "rel_z": 0}
+        near_item  = {"type": "item",   "rel_x": 1,   "rel_y": 0, "rel_z": 0}
+
+        dist_far  = StrategyBot._entity_dist(far_object)
+        dist_near = StrategyBot._entity_dist(near_item)
+        assert dist_far > 10,  f"远距离实体距离应 > 10, 实际 {dist_far}"
+        assert dist_near < 5,  f"近距离实体距离应 < 5, 实际 {dist_near}"
+
+        collect_dist = 5.0
+        # 修复后的过滤逻辑（两个条件均需满足）
+        items = [
+            e for e in [far_object, near_item]
+            if (e.get("type") == "object" or e.get("type") == "item")
+            and StrategyBot._entity_dist(e) < collect_dist
+        ]
+        assert len(items) == 1, f"应只选中 1 个近距离物品, 实际 {len(items)}"
+        assert items[0] is near_item
+
+    test("COLLECT 过滤器优先级", test_strategy_bot_collect_filter)
 
     # ─── 4. EvalBridge 测试 ───
     print("\n[4] EvalBridge...")
@@ -229,13 +260,14 @@ def main():
             assert data["generation"] == 0
 
     def test_f5_run_evolution_flags():
-        """F5: run_evolution.py 应包含 --player-id 和 --skill 参数"""
+        """F5: run_evolution.py 应包含 --player-id 和 --skill 参数，且 --skill 被使用"""
         run_evo_path = os.path.join(ROOT, "meta", "run_evolution.py")
         with open(run_evo_path) as f:
             src = f.read()
         assert "--player-id" in src, "--player-id 参数未在 run_evolution.py 中定义"
         assert "--curriculum" in src, "--curriculum 参数未在 run_evolution.py 中定义"
         assert "--skill" in src, "--skill 参数未在 run_evolution.py 中定义"
+        assert "args.skill" in src, "--skill 参数已定义但未被使用"
 
     def test_s1_player_bot_syntax():
         """S1: player_bot.js 应通过 JS 语法检查"""

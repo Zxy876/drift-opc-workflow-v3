@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "designer"))
 
 from bot_client import BotClient
 from strategy_bot import StrategyBot
-from skill_profiles import load_skill_profiles, EPISODES_PER_SKILL
+from skill_profiles import load_skill_profiles, load_episodes_per_skill, EPISODES_PER_SKILL
 from designer_agent import DesignerAgent
 from eval_bridge import analyze_multi_skill_data, format_multi_skill_eval
 from evolution_log import EvolutionLog
@@ -38,18 +38,21 @@ class MetaAgent:
         bot_port: int = 9999,
         drift_url: str = "http://35.201.132.58:8000",
         config_path: Optional[str] = None,
+        single_skill: Optional[str] = None,
     ):
         self.designer = designer
         self.bot_host = bot_host
         self.bot_port = bot_port
         self.drift_url = drift_url
+        self.single_skill = single_skill
         self.logger = EvolutionLog()
 
         # 加载配置
         self._load_config(config_path)
 
-        # 加载技能档案
+        # 加载技能档案（供 run_evolution 打印摘要使用）
         self.skill_profiles = load_skill_profiles()
+        self.episodes_per_skill_map = load_episodes_per_skill()
 
     def _load_config(self, config_path: Optional[str]):
         """加载进化参数"""
@@ -99,6 +102,7 @@ class MetaAgent:
         print(f"# 目标难度: D{target_difficulty}")
         print(f"# 每代评估: {self.episodes_per_eval} 局")
         print(f"# 最大代数: {self.max_generations}")
+        print(f"# 技能档案: {list(self.skill_profiles.keys())}")
         print(f"{'#' * 70}\n")
 
         for gen in range(self.max_generations):
@@ -198,10 +202,14 @@ class MetaAgent:
 
         # 按技能级别分配局数
         schedule = []
-        for skill, count in EPISODES_PER_SKILL.items():
-            for _ in range(count):
-                schedule.append(skill)
-        random.shuffle(schedule)  # 打乱顺序，避免系统偏差
+        if self.single_skill:
+            # 单技能模式：所有局都用指定技能
+            schedule = [self.single_skill] * self.episodes_per_eval
+        else:
+            for skill, count in self.episodes_per_skill_map.items():
+                for _ in range(count):
+                    schedule.append(skill)
+            random.shuffle(schedule)  # 打乱顺序，避免系统偏差
 
         for ep, skill in enumerate(schedule):
             client = None

@@ -131,13 +131,17 @@ evolution:
 
 ## 新增功能 (Phase 2)
 
+> **注意**: 以下描述基于旧版 PPO/RL 架构。Phase 8 已重构为 StrategyBot，相关文件已移至 `_legacy/`。
+
 - **一键启动**: `bash run.sh demo_rl_001 3`
 - **课程学习**: `python meta/run_evolution.py --curriculum --difficulty 5`
 - **批量生成**: `python designer/batch_generate.py --prefix my_world --publish quick`
-- **模型推理**: `python player/play_with_model.py --model checkpoints/player_ppo.pth`
+- **模型推理**: `python _legacy/player/play_with_model.py --model checkpoints/player_ppo.pth`
 - **进化可视化**: `python meta/visualize_evolution.py`
 
 ## 新增功能 (Phase 3)
+
+> **注意**: 以下描述基于旧版 PPO/RL 架构。Phase 8 已重构为 StrategyBot，相关文件已移至 `_legacy/`。
 
 ### 观测空间扩展 (F1 + S1)
 `player/observation_space.py` 统一定义 64 维观测向量布局；`obs[57:62]` 新增有效信号：
@@ -190,6 +194,8 @@ python tests/smoke_test.py
 
 ## 新增功能 (Phase 4)
 
+> **注意**: 以下描述基于旧版 PPO/RL 架构。Phase 8 已重构为 StrategyBot，相关文件已移至 `_legacy/`。
+
 ### 模型格式统一 (C1)
 所有模型保存/加载统一支持两种格式：
 - **actor-only**: `torch.save(actor.state_dict(), path)` — 推理用
@@ -221,6 +227,8 @@ Quick Publish 和 Premium Publish 均支持 3 次重试。
 
 ## 新增功能 (Phase 5)
 
+> **注意**: 以下描述基于旧版 PPO/RL 架构。Phase 8 已重构为 StrategyBot，相关文件已移至 `_legacy/`。
+
 ### 死亡检测优化 (Q3)
 `last_death_cause` 优先于 `health <= 0` 判断，避免重复计入。Bot 侧读取后立即清除。
 
@@ -234,6 +242,8 @@ Quick Publish 和 Premium Publish 均支持 3 次重试。
 支持 `PLAYER_ID` 环境变量，自动传递给 `--player-id`。
 
 ## 新增功能 (Phase 6)
+
+> **注意**: 以下描述基于旧版 PPO/RL 架构。Phase 8 已重构为 StrategyBot，相关文件已移至 `_legacy/`。
 
 ### TensorBoard 训练可视化 (I1)
 `train_player.py` 集成 TensorBoard Logger，训练时自动生成事件文件到 `tb_logs/` 目录。
@@ -277,7 +287,7 @@ python tests/smoke_test.py
 
 | 技能档案 | reaction_ticks | use_easy_probability | 描述 |
 |---------|---------------|---------------------|------|
-| `beginner` | 10 | 0.4 | 模拟新手，慢反应，常用 /easy |
+| `beginner` | 10 | 0.3 | 模拟新手，慢反应，常用 /easy |
 | `average` | 5 | 0.1 | 模拟普通玩家，Flow Zone 基准 |
 | `expert` | 2 | 0.0 | 模拟高手，快反应，不用 /easy |
 
@@ -298,5 +308,5 @@ python tests/smoke_test.py
 ### 冒烟测试
 ```bash
 python tests/smoke_test.py
-# 22 项测试，无需 MC 服务器，无需 torch
+# 24 项测试，无需 MC 服务器，无需 torch
 ```

@@ -12,23 +12,4 @@ designer:
   workflow_poll_interval: 5       # 工作流轮询间隔（秒）
   workflow_timeout: 300           # 工作流超时（秒）
 
-# PlayerAgent 训练参数
-player_training:
-  algorithm: "PPO"
-  lr: 3.0e-4
-  gamma: 0.99
-  gae_lambda: 0.95
-  eps_clip: 0.2
-  vf_coef: 0.5
-  ent_coef: 0.01
-  max_grad_norm: 0.5
-  repeat_per_collect: 10
-  batch_size: 256
-  hidden_sizes: [256, 256]
-  buffer_size: 20000
-  max_epoch: 100
-  step_per_epoch: 5000
-  step_per_collect: 2000
-  episode_per_test: 10
-  num_train_envs: 4
-  num_test_envs: 2
+
