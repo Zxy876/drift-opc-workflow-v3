@@ -189,3 +189,79 @@ evolution:
 python tests/smoke_test.py
 # 无需 MC 服务器，16 项测试 (torch 未装时 4 项跳过)
 ```
+
+## 新增功能 (Phase 4)
+
+### 模型格式统一 (C1)
+所有模型保存/加载统一支持两种格式：
+- **actor-only**: `torch.save(actor.state_dict(), path)` — 推理用
+- **完整检查点**: `torch.save({"actor": ..., "critic": ..., "optim": ...}, path)` — 训练恢复用
+
+加载时自动检测格式：
+```python
+checkpoint = torch.load(path)
+state_dict = checkpoint["actor"] if isinstance(checkpoint, dict) and "actor" in checkpoint else checkpoint
+```
+
+### 环境关闭安全 (C2)
+`env.close()` 在 TCP 连接已断开时不再抛出异常。
+
+### LLM 调用健壮性 (F1)
+`generate_improved_design()` 和 `generate_new_level()` 均支持 `max_retries` 参数（默认 3 次），指数退避重试，全部失败后降级为默认设计。
+
+### 进化检查点 (F2)
+每当出现更高通关率时，MetaAgent 自动保存 `checkpoints/best_{level_id}.pth`。
+
+### 课程学习模型传递 (F3)
+`--curriculum` 模式下，每个难度阶段完成后自动将最佳模型传递到下一阶段。
+
+### 容错评估 (F4)
+每局游玩独立创建环境，单局失败不影响整体评估。连续 3 局失败自动终止当前代评估。
+
+### 发布重试 (R4)
+Quick Publish 和 Premium Publish 均支持 3 次重试。
+
+## 新增功能 (Phase 5)
+
+### 死亡检测优化 (Q3)
+`last_death_cause` 优先于 `health <= 0` 判断，避免重复计入。Bot 侧读取后立即清除。
+
+### 关卡加载验证 (F4)
+`reset()` 替换硬编码 `sleep(3)` 为最多 10 秒的验证循环，确保关卡实际加载完毕。
+
+### 工作流进度日志 (F3)
+`_wait_for_workflow()` 每 30 秒输出一次工作流状态和当前步骤。
+
+### run.sh 增强 (F5)
+支持 `PLAYER_ID` 环境变量，自动传递给 `--player-id`。
+
+## 新增功能 (Phase 6)
+
+### TensorBoard 训练可视化 (I1)
+`train_player.py` 集成 TensorBoard Logger，训练时自动生成事件文件到 `tb_logs/` 目录。
+```bash
+python player/train_player.py --level demo_rl_001
+tensorboard --logdir tb_logs
+```
+
+### 一键启动 Viewer (I2)
+`run.sh` 支持 `--viewer` 参数，自动启动 prismarine-viewer：
+```bash
+bash run.sh demo_rl_001 3 --viewer
+# 浏览器打开 http://localhost:3007 查看 Bot 视角
+```
+
+### 参数一致性 (Q1)
+所有脚本统一使用 `--player-id` 参数名（`play_with_model.py`、`train_player.py`、`run_evolution.py`）。
+
+### 优雅退出 (Q2)
+Ctrl+C 中断进化循环时自动导出已有日志。
+
+### Dashboard URL 加载 (I3)
+进化看板支持通过 URL 加载 JSON/JSONL 日志文件，无需手动上传。
+
+### 运行冒烟测试
+```bash
+python tests/smoke_test.py
+# 无需 MC 服务器，25 项测试 (torch 未装时 9 项跳过)
+```

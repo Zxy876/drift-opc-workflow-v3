@@ -406,6 +406,35 @@ def main():
     test("Q2: 最佳检查点包含 actor 键", test_q2_best_checkpoint_has_actor_key, requires_torch=True)
     test("F4: reset 无硬编码 sleep(3)", test_f4_reset_no_hardcoded_sleep)
 
+    # ─── 9. Phase 6 新增测试 ───
+    print("\n[9] Phase 6: I1/Q1/Q2 验证...")
+
+    def test_i1_train_has_tensorboard():
+        """I1: train_player.py 应导入并使用 TensorboardLogger"""
+        train_path = os.path.join(ROOT, "player", "train_player.py")
+        with open(train_path) as f:
+            src = f.read()
+        assert "TensorboardLogger" in src, "train_player.py 未使用 TensorboardLogger"
+        assert "SummaryWriter" in src, "train_player.py 未导入 SummaryWriter"
+
+    def test_q1_play_with_model_player_id_flag():
+        """Q1: play_with_model.py 应使用 --player-id（不是 --player）"""
+        play_path = os.path.join(ROOT, "player", "play_with_model.py")
+        with open(play_path) as f:
+            src = f.read()
+        assert "--player-id" in src, "play_with_model.py 应使用 --player-id 而非 --player"
+
+    def test_q2_run_evolution_sigint_handler():
+        """Q2: run_evolution.py 应有 KeyboardInterrupt 处理"""
+        evo_path = os.path.join(ROOT, "meta", "run_evolution.py")
+        with open(evo_path) as f:
+            src = f.read()
+        assert "KeyboardInterrupt" in src, "run_evolution.py 缺少 KeyboardInterrupt 处理"
+
+    test("I1: train_player TensorBoard 集成", test_i1_train_has_tensorboard)
+    test("Q1: play_with_model --player-id 参数", test_q1_play_with_model_player_id_flag)
+    test("Q2: run_evolution SIGINT 处理", test_q2_run_evolution_sigint_handler)
+
     # ─── 结果 ───
     print(f"\n{'=' * 40}")
     print(f" 结果: {PASS} 通过, {FAIL} 失败, {SKIP} 跳过")
