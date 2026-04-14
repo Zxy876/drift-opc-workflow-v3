@@ -40,11 +40,17 @@ MetaAgent (双环控制器) → 循环
 ### 1. 安装依赖
 
 ```bash
-# Python
-pip install -r requirements.txt
-
-# Node.js
+# Node.js (18+)
 npm install
+
+# Python venv
+python3 -m venv venv && source venv/bin/activate
+
+# ⚠️ CPU-only 服务器（无 GPU）— 需先单独安装 CPU torch，否则会安装 CUDA 版导致 import 超时
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+# 其余依赖
+pip install -r requirements.txt
 ```
 
 ### 2. 配置
