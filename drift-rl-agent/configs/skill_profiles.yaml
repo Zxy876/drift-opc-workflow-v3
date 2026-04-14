@@ -1,0 +1,41 @@
+# 技能档案参数（可调）
+# StrategyBot 使用这些参数模拟不同水平的玩家
+profiles:
+  beginner:
+    reaction_ticks: 10
+    exploration_radius: 15
+    combat_engage_dist: 3.0
+    flee_health_threshold: 6
+    stuck_patience: 60
+    use_easy_probability: 0.3
+    use_pathfinder: false
+    npc_interact_delay: 15
+    collect_item_dist: 3.0
+
+  average:
+    reaction_ticks: 5
+    exploration_radius: 30
+    combat_engage_dist: 4.0
+    flee_health_threshold: 4
+    stuck_patience: 40
+    use_easy_probability: 0.1
+    use_pathfinder: true
+    npc_interact_delay: 5
+    collect_item_dist: 5.0
+
+  expert:
+    reaction_ticks: 2
+    exploration_radius: 50
+    combat_engage_dist: 5.0
+    flee_health_threshold: 2
+    stuck_patience: 20
+    use_easy_probability: 0.0
+    use_pathfinder: true
+    npc_interact_delay: 2
+    collect_item_dist: 8.0
+
+# 每代评估中各技能级别的局数分配（总数应等于 evolution_params.yaml 的 episodes_per_eval）
+episodes_per_skill:
+  beginner: 7
+  average: 7
+  expert: 6
