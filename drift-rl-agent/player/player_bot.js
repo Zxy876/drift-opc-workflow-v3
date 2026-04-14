@@ -127,6 +127,9 @@ function createBot() {
     botReady = true
     console.log('[Bot] 已生成，准备接收命令')
 
+    // R1: 预热 Drift 状态缓存
+    getDriftState().catch(() => {})
+
     // 配置 pathfinder
     const mcData = require('minecraft-data')(bot.version)
     const defaultMove = new Movements(bot, mcData)
@@ -237,7 +240,8 @@ function getState() {
     // Drift 特有事件
     level_completed: levelCompleted,
     triggers_completed: triggersCompleted,
-    last_death_cause: lastDeathCause,
+    // R2: 读取后即刻清除，避免重复计入同一次死亡
+    last_death_cause: (() => { const v = lastDeathCause; lastDeathCause = null; return v })()
     // Drift 后端同步字段（由 getDriftState 异步刷新）
     current_difficulty: driftStateCache.current_difficulty || 0,
     triggers_remaining: driftStateCache.triggers_remaining || 0,

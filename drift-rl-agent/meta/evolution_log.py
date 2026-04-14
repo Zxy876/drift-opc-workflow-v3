@@ -44,6 +44,8 @@ class EvolutionLog:
         log_file = os.path.join(self.log_dir, f"{self.run_id}.jsonl")
         with open(log_file, "a") as f:
             f.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
 
     def get_summary(self) -> dict:
         """获取进化过程摘要"""
