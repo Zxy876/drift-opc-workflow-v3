@@ -20,6 +20,7 @@ import numpy as np
 import yaml
 import torch
 from torch.optim import Adam
+from torch.utils.tensorboard import SummaryWriter
 
 # ─── Tianshou 导入（兼容 v0.5 / v1.x）────────────────────
 try:
@@ -29,6 +30,7 @@ try:
     from tianshou.trainer import OnpolicyTrainer
     from tianshou.utils.net.common import Net
     from tianshou.utils.net.discrete import Actor, Critic
+    from tianshou.utils import TensorboardLogger
 except ImportError as e:
     raise ImportError(
         f"无法导入 tianshou: {e}\n"
@@ -126,10 +128,10 @@ def train(args):
         num_test = 1
 
     train_envs = DummyVectorEnv(
-        [make_env(args.level, "RLAgent_train", 9999) for _ in range(num_train)]
+        [make_env(args.level, f"{args.player_id}_train", 9999) for _ in range(num_train)]
     )
     test_envs = DummyVectorEnv(
-        [make_env(args.level, "RLAgent_test", 9999) for _ in range(num_test)]
+        [make_env(args.level, f"{args.player_id}_test", 9999) for _ in range(num_test)]
     )
 
     obs_shape = (64,)
@@ -176,6 +178,14 @@ def train(args):
     train_collector = Collector(policy, train_envs, buffer)
     test_collector = Collector(policy, test_envs)
 
+    # TensorBoard 日志
+    tb_log_dir = os.path.join(os.path.dirname(__file__), "..", "tb_logs", args.level)
+    os.makedirs(tb_log_dir, exist_ok=True)
+    writer = SummaryWriter(log_dir=tb_log_dir)
+    tb_logger = TensorboardLogger(writer)
+    print(f"[Train] TensorBoard 日志: {tb_log_dir}")
+    print(f"[Train] 运行 'tensorboard --logdir tb_logs' 查看训练曲线")
+
     result = OnpolicyTrainer(
         policy=policy,
         train_collector=train_collector,
@@ -186,6 +196,7 @@ def train(args):
         episode_per_test=config["episode_per_test"],
         batch_size=config["batch_size"],
         step_per_collect=config["step_per_collect"],
+        logger=tb_logger,
     ).run()
 
     print(f"\n[Train] 训练完成!")
@@ -205,6 +216,7 @@ def train(args):
     print(f"[Train] Actor 已保存: {actor_path}")
     print(f"[Train] 完整检查点已保存: {checkpoint_path}")
 
+    writer.close()
     return result
 
 
@@ -213,5 +225,7 @@ if __name__ == "__main__":
     parser.add_argument("--level", type=str, default="demo_rl_001", help="关卡 ID")
     parser.add_argument("--config", type=str, default=None, help="配置文件路径")
     parser.add_argument("--epochs", type=int, default=None, help="训练 epoch 数（覆盖配置）")
+    parser.add_argument("--player-id", type=str, default="DriftRLAgent",
+                        help="玩家 ID（发送给 Drift 后端和 Bot）")
     args = parser.parse_args()
     train(args)

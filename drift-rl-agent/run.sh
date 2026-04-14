@@ -8,6 +8,7 @@
 #   bash run.sh demo_rl_001 3
 #   bash run.sh demo_rl_001 5 --premium --model checkpoints/player_ppo_demo.pth
 #   bash run.sh demo_rl_001 3 --curriculum --generations 15
+#   bash run.sh demo_rl_001 3 --viewer              # 同时启动 prismarine-viewer
 #   额外参数: --premium --curriculum --player-id <ID> --model <path> 等
 #
 # 环境变量:
@@ -64,11 +65,16 @@ fi
 
 # ─── 清理函数 ─────────────────────────────────────────────
 BOT_PID=""
+VIEWER_PID=""
 cleanup() {
     echo ""
     echo "[Cleanup] 停止 Bot (PID: $BOT_PID)..."
     if [ -n "$BOT_PID" ]; then
         kill "$BOT_PID" 2>/dev/null || true
+    fi
+    if [ -n "$VIEWER_PID" ]; then
+        echo "[Cleanup] 停止 Viewer (PID: $VIEWER_PID)..."
+        kill "$VIEWER_PID" 2>/dev/null || true
     fi
     echo "=========================================="
     echo " 完成! 查看日志: evolution_logs/"
@@ -85,6 +91,25 @@ echo "[Bot] PID: $BOT_PID"
 # 等待 Bot 就绪
 echo "[Bot] 等待 Bot 连接 MC 服务器..."
 sleep 5
+
+# ─── 可选：启动 prismarine-viewer ─────────────────────────
+VIEWER_REQUESTED=0
+for arg in "${EXTRA_ARGS[@]}"; do
+    [[ "$arg" == "--viewer" ]] && VIEWER_REQUESTED=1 && break
+done
+
+if [ "$VIEWER_REQUESTED" -eq 1 ]; then
+    echo "[Viewer] 启动 prismarine-viewer..."
+    node viewer/viewer_server.js &
+    VIEWER_PID=$!
+    echo "[Viewer] PID: $VIEWER_PID | 浏览器打开 http://localhost:3007"
+    # 从 EXTRA_ARGS 中移除 --viewer，避免传给 Python
+    FILTERED_ARGS=()
+    for arg in "${EXTRA_ARGS[@]}"; do
+        [[ "$arg" != "--viewer" ]] && FILTERED_ARGS+=("$arg")
+    done
+    EXTRA_ARGS=("${FILTERED_ARGS[@]}")
+fi
 
 # ─── 启动进化循环 ─────────────────────────────────────────
 echo "[Evolution] 启动双环进化循环..."
