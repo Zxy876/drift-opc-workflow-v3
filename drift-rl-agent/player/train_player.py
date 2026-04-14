@@ -15,6 +15,7 @@ import argparse
 import os
 from typing import Optional
 
+import gymnasium as gym
 import numpy as np
 import yaml
 import torch
@@ -36,6 +37,27 @@ except ImportError as e:
     )
 
 from drift_mineflayer_env import DriftMineflayerEnv
+
+
+class FlatActionWrapper(gym.ActionWrapper):
+    """
+    将 MultiDiscrete([3,3,2,2,2,7]) 映射为 Discrete(504)
+    用于 Tianshou Categorical PPO 训练
+    """
+    def __init__(self, env):
+        super().__init__(env)
+        self.orig_nvec = env.action_space.nvec  # [3,3,2,2,2,7]
+        self.flat_n = int(np.prod(self.orig_nvec))  # 504
+        self.action_space = gym.spaces.Discrete(self.flat_n)
+
+    def action(self, act):
+        """Discrete(504) → MultiDiscrete([3,3,2,2,2,7])"""
+        result = []
+        remaining = int(act)
+        for n in reversed(self.orig_nvec):
+            result.append(remaining % n)
+            remaining //= n
+        return np.array(list(reversed(result)), dtype=np.int64)
 
 
 def load_training_config(config_path: Optional[str] = None) -> dict:
@@ -77,13 +99,14 @@ def load_training_config(config_path: Optional[str] = None) -> dict:
 
 
 def make_env(level_id: str, player_id: str, bot_port: int = 9999):
-    """创建环境工厂函数"""
+    """创建环境工厂函数（包含 FlatActionWrapper）"""
     def _make():
-        return DriftMineflayerEnv(
+        env = DriftMineflayerEnv(
             level_id=level_id,
             player_id=player_id,
             bot_port=bot_port,
         )
+        return FlatActionWrapper(env)
     return _make
 
 
@@ -106,8 +129,8 @@ def train(args):
     )
 
     obs_shape = (64,)
-    # MultiDiscrete([3,3,2,2,2,7]) → 展平为单个离散维（乘积）用于 Categorical
-    action_shape = int(np.prod([3, 3, 2, 2, 2, 7]))
+    # 已经被 FlatActionWrapper 展平为 Discrete(504)
+    action_shape = 504
 
     hidden_sizes = config.get("hidden_sizes", [256, 256])
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -138,7 +161,7 @@ def train(args):
         vf_coef=config["vf_coef"],
         ent_coef=config["ent_coef"],
         max_grad_norm=config["max_grad_norm"],
-        action_space=train_envs.action_space,
+        action_space=train_envs.action_space[0],  # 单个 Discrete(504) space
     )
 
     buffer = VectorReplayBuffer(

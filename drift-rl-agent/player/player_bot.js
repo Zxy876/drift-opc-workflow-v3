@@ -11,6 +11,7 @@
 
 const mineflayer = require('mineflayer')
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder')
+const { Vec3 } = require('vec3')
 const net = require('net')
 const fs = require('fs')
 const path = require('path')
@@ -302,7 +303,7 @@ function handleCommand(cmd) {
     case 'look_at':
       // 看向指定坐标
       if (bot && botReady && cmd.x !== undefined) {
-        bot.lookAt({ x: cmd.x, y: cmd.y, z: cmd.z })
+        bot.lookAt(new Vec3(cmd.x, cmd.y, cmd.z))
       }
       return { ok: true }
 

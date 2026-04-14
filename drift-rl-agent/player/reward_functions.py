@@ -109,7 +109,7 @@ def compute_reward(
         reward += params.get("low_health_penalty", -0.1)
 
     # 10. /easy 命令惩罚（鼓励挑战高难度）
-    if action.get("command_type") == 1 or info.get("easy_used", False):
+    if info.get("easy_just_used", False):
         reward += params.get("easy_command_penalty", -0.5)
 
     return reward

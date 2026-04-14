@@ -12,6 +12,8 @@ import sys
 import time
 from typing import Optional
 
+import numpy as np
+import torch
 import yaml
 
 # 添加 parent 目录到 path（方便 import）
@@ -34,15 +36,21 @@ class MetaAgent:
         bot_port: int = 9999,
         drift_url: str = "http://35.201.132.58:8000",
         config_path: Optional[str] = None,
+        model_path: Optional[str] = None,  # 新增：训练好的模型路径
     ):
         self.designer = designer
         self.bot_host = bot_host
         self.bot_port = bot_port
         self.drift_url = drift_url
         self.logger = EvolutionLog()
+        self.model_path = model_path
+        self._policy = None
 
         # 加载配置
         self._load_config(config_path)
+
+        if model_path and os.path.exists(model_path):
+            self._load_policy(model_path)
 
     def _load_config(self, config_path: Optional[str]):
         """加载进化参数"""
@@ -68,6 +76,35 @@ class MetaAgent:
             self.flow_zone_streak_target = evo_cfg.get("flow_zone_streak_target", 3)
         except FileNotFoundError:
             pass
+
+    def _load_policy(self, model_path: str):
+        """加载训练好的 PPO 策略"""
+        try:
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "player"))
+            from tianshou.utils.net.common import Net
+            from tianshou.utils.net.discrete import Actor
+
+            device = torch.device("cpu")
+            net = Net(state_shape=(64,), hidden_sizes=[256, 256], device=device)
+            actor = Actor(net, action_shape=504, device=device).to(device)
+            state_dict = torch.load(model_path, map_location=device)
+            actor.load_state_dict(state_dict, strict=False)
+            actor.eval()
+            self._policy = actor
+            print(f"[Meta] 已加载训练模型: {model_path}")
+        except Exception as e:
+            print(f"[Meta] 加载模型失败，使用随机策略: {e}")
+            self._policy = None
+
+    def _decode_action(self, flat_action: int) -> np.ndarray:
+        """Discrete(504) → MultiDiscrete([3,3,2,2,2,7])"""
+        nvec = [3, 3, 2, 2, 2, 7]
+        result = []
+        remaining = flat_action
+        for n in reversed(nvec):
+            result.append(remaining % n)
+            remaining //= n
+        return np.array(list(reversed(result)), dtype=np.int64)
 
     def run_evolution(
         self,
@@ -186,8 +223,16 @@ class MetaAgent:
             done = False
 
             while not done:
-                # 简化版：随机动作（完整版替换为 action = policy(obs)）
-                action = env.action_space.sample()
+                if self._policy is not None:
+                    # 使用训练好的策略
+                    obs_tensor = torch.FloatTensor(obs).unsqueeze(0)
+                    with torch.no_grad():
+                        logits, _ = self._policy(obs_tensor)
+                        flat_action = logits.argmax(dim=1).item()
+                    action = self._decode_action(flat_action)
+                else:
+                    # 随机策略
+                    action = env.action_space.sample()
                 obs, reward, terminated, truncated, info = env.step(action)
                 episode_reward += reward
                 done = terminated or truncated

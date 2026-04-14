@@ -98,19 +98,26 @@ class DriftMineflayerEnv(gym.Env):
             self.sock = None
 
     def _send(self, data: dict) -> dict:
-        """发送命令到 Bot 并接收响应"""
-        self._connect()
-        msg = json.dumps(data) + "\n"
-        self.sock.sendall(msg.encode())
+        """发送命令到 Bot 并接收响应（带自动重连）"""
+        for attempt in range(3):
+            try:
+                self._connect()
+                msg = json.dumps(data) + "\n"
+                self.sock.sendall(msg.encode())
 
-        response = b""
-        while not response.endswith(b"\n"):
-            chunk = self.sock.recv(8192)
-            if not chunk:
-                raise ConnectionError("Bot 连接断开")
-            response += chunk
+                response = b""
+                while not response.endswith(b"\n"):
+                    chunk = self.sock.recv(8192)
+                    if not chunk:
+                        raise ConnectionError("Bot 连接断开")
+                    response += chunk
 
-        return json.loads(response.decode().strip())
+                return json.loads(response.decode().strip())
+            except (ConnectionError, socket.error, OSError) as e:
+                self._disconnect()
+                if attempt == 2:
+                    raise ConnectionError(f"Bot 连接失败（3 次重试后）: {e}")
+                time.sleep(1)
 
     def _wait_for_bot(self, timeout: float = 10.0):
         """等待 Bot 就绪"""
@@ -181,6 +188,7 @@ class DriftMineflayerEnv(gym.Env):
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
+        self._disconnect()  # 清理旧连接
         self.steps = 0
         self.prev_triggers = 0
         self.visited_positions = set()
@@ -269,6 +277,7 @@ class DriftMineflayerEnv(gym.Env):
             "new_area_discovered": new_area,
             "npc_interacted": npc_interacted,
             "level_completed": level_completed,
+            "easy_just_used": (int(cmd_type) == 1),  # 本步是否刚使用了 /easy
         }
         reward = compute_reward(
             self.prev_state or {}, state, action_dict, died or level_completed, info,

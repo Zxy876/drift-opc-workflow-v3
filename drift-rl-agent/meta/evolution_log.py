@@ -11,7 +11,11 @@ from typing import Any, Optional
 class EvolutionLog:
     """进化过程日志"""
 
-    def __init__(self, log_dir: str = "evolution_logs"):
+    def __init__(self, log_dir: str = None):
+        if log_dir is None:
+            log_dir = os.path.join(
+                os.path.dirname(__file__), "..", "evolution_logs"
+            )
         self.log_dir = log_dir
         os.makedirs(log_dir, exist_ok=True)
         self.run_id = f"run_{int(time.time())}"
