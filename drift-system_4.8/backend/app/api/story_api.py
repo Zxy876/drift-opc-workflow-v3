@@ -3524,7 +3524,10 @@ def api_story_load(
 ):
     difficulty_override = (body or {}).get("difficulty_override")
     if difficulty_override is not None:
-        difficulty_override = int(difficulty_override)
+        try:
+            difficulty_override = int(difficulty_override)
+        except (ValueError, TypeError):
+            return {"status": "error", "msg": "difficulty_override must be an integer"}
     try:
         patch = story_engine.load_level_for_player(
             player_id, level_id, difficulty_override=difficulty_override
