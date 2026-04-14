@@ -55,7 +55,7 @@ def play(args):
     # 创建环境
     env = DriftMineflayerEnv(
         level_id=args.level,
-        player_id=args.player,
+        player_id=args.player_id,
         bot_port=args.port,
     )
 
@@ -90,7 +90,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, required=True, help="模型文件路径")
     parser.add_argument("--level", type=str, default="demo_rl_001")
-    parser.add_argument("--player", type=str, default="DriftRLAgent")
+    parser.add_argument("--player-id", type=str, default="DriftRLAgent",
+                        help="玩家 ID（发送给 Drift 后端和 Bot）")
     parser.add_argument("--port", type=int, default=9999)
     parser.add_argument("--episodes", type=int, default=5)
     args = parser.parse_args()

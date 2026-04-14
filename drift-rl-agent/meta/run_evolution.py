@@ -49,6 +49,14 @@ def main():
                         help="玩家 ID（发送给 Drift 后端和 Bot）")
     args = parser.parse_args()
 
+    import signal
+
+    def _sigint_handler(signum, frame):
+        print("\n[Evolution] 收到中断信号，正在保存日志并退出...")
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGINT, _sigint_handler)
+
     # 默认设计描述（按目标难度选择）
     default_designs = {
         1: "在平坦的草原上收集 3 颗蓝色宝石。NPC 向导在出生点附近提供提示。",
@@ -82,44 +90,53 @@ def main():
         meta.max_generations = args.generations
 
     # 运行进化
-    if args.curriculum:
-        # 课程学习模式：D1 → D2 → ... → 目标难度
-        print(f"\n[Curriculum] 从 D1 逐步升级到 D{args.difficulty}")
-        for d in range(1, args.difficulty + 1):
-            design_text = default_designs.get(d, default_designs[3])
-            sub_level_id = f"{args.level}_d{d}"
-            print(f"\n{'#' * 70}")
-            print(f"# Curriculum Stage: D{d}")
-            print(f"{'#' * 70}")
+    try:
+        if args.curriculum:
+            # 课程学习模式：D1 → D2 → ... → 目标难度
+            print(f"\n[Curriculum] 从 D1 逐步升级到 D{args.difficulty}")
+            for d in range(1, args.difficulty + 1):
+                design_text = default_designs.get(d, default_designs[3])
+                sub_level_id = f"{args.level}_d{d}"
+                print(f"\n{'#' * 70}")
+                print(f"# Curriculum Stage: D{d}")
+                print(f"{'#' * 70}")
+                summary = meta.run_evolution(
+                    initial_design=design_text,
+                    level_id=sub_level_id,
+                    player_id=args.player_id,
+                    target_difficulty=d,
+                    use_premium=args.premium,
+                )
+                # F3: 将当前最佳模型传递到下一阶段
+                ckpt_path = os.path.join(
+                    os.path.dirname(__file__), "..", "checkpoints",
+                    f"best_{sub_level_id}.pth"
+                )
+                if os.path.exists(ckpt_path):
+                    meta._load_policy(ckpt_path)
+                    print(f"[Curriculum] 已加载 D{d} 最佳模型带入 D{d + 1}: {ckpt_path}")
+                if summary.get("in_flow_zone"):
+                    print(f"[Curriculum] D{d} 达到 Flow Zone，升级到 D{d + 1}")
+                else:
+                    print(f"[Curriculum] D{d} 未达到 Flow Zone，停止升级")
+                    break
+        else:
             summary = meta.run_evolution(
-                initial_design=design_text,
-                level_id=sub_level_id,
+                initial_design=args.design,
+                level_id=args.level,
                 player_id=args.player_id,
-                target_difficulty=d,
+                target_difficulty=args.difficulty,
                 use_premium=args.premium,
             )
-            # F3: 将当前最佳模型传递到下一阶段
-            ckpt_path = os.path.join(
-                os.path.dirname(__file__), "..", "checkpoints",
-                f"best_{sub_level_id}.pth"
-            )
-            if os.path.exists(ckpt_path):
-                meta._load_policy(ckpt_path)
-                print(f"[Curriculum] 已加载 D{d} 最佳模型带入 D{d + 1}: {ckpt_path}")
-            if summary.get("in_flow_zone"):
-                print(f"[Curriculum] D{d} 达到 Flow Zone，升级到 D{d + 1}")
-            else:
-                print(f"[Curriculum] D{d} 未达到 Flow Zone，停止升级")
-                break
-    else:
-        summary = meta.run_evolution(
-            initial_design=args.design,
-            level_id=args.level,
-            player_id=args.player_id,
-            target_difficulty=args.difficulty,
-            use_premium=args.premium,
-        )
-        print(f"\n进化摘要: {summary}")
+            print(f"\n进化摘要: {summary}")
+    except KeyboardInterrupt:
+        print("\n[Evolution] 用户中断，导出已有日志...")
+        if hasattr(meta, 'logger') and meta.logger.entries:
+            log_path = meta.logger.export_json()
+            print(f"[Evolution] 日志已保存: {log_path}")
+        else:
+            print("[Evolution] 无进化数据可保存")
+        sys.exit(0)
 
 
 if __name__ == "__main__":

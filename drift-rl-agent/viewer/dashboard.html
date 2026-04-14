@@ -29,6 +29,13 @@
     </label>
   </div>
 
+  <div style="text-align:center; margin: 10px;">
+    <label>或输入进化日志 URL:
+      <input type="text" id="url-input" placeholder="http://localhost:8000/evolution_logs/run_xxx_full.json" style="width:400px; padding:4px; background:#222; color:#eee; border:1px solid #444; border-radius:4px;">
+    </label>
+    <button id="url-load" style="padding:4px 12px; background:#00d4ff; color:#000; border:none; border-radius:4px; cursor:pointer;">加载</button>
+  </div>
+
   <div class="summary" id="summary"></div>
 
   <div class="grid">
@@ -79,6 +86,39 @@
         }
       };
       reader.readAsText(file);
+    });
+
+    document.getElementById('url-load').addEventListener('click', () => {
+      const url = document.getElementById('url-input').value.trim();
+      if (!url) { alert('请输入日志 URL'); return; }
+      fetch(url)
+        .then(r => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.text();
+        })
+        .then(text => {
+          // 支持 JSON 和 JSONL 两种格式
+          let data;
+          if (text.trim().startsWith('{')) {
+            data = JSON.parse(text);
+          } else {
+            // JSONL: 每行一个 JSON
+            const entries = text.trim().split('\n').map(line => JSON.parse(line));
+            const crs = entries.map(e => e.eval.completion_rate);
+            data = {
+              summary: {
+                run_id: 'jsonl_import',
+                total_generations: entries.length,
+                final_completion_rate: crs[crs.length - 1],
+                best_completion_rate: Math.max(...crs),
+                in_flow_zone: crs[crs.length - 1] >= 0.6 && crs[crs.length - 1] <= 0.8,
+              },
+              generations: entries,
+            };
+          }
+          renderDashboard(data);
+        })
+        .catch(err => alert('加载失败: ' + err.message));
     });
 
     function renderDashboard(data) {
