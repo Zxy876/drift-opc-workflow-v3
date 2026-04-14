@@ -72,8 +72,8 @@ public class ReplayCommand implements CommandExecutor {
                     return;
                 }
 
-                String loadResp = backend.postJson("/story/load/" + playerId,
-                        "{\"level_id\": \"" + currentLevelId + "\"}");
+                String loadResp = backend.postJson("/story/load/" + playerId + "/" + currentLevelId,
+                        "{}");
                 JsonObject loadRoot = JsonParser.parseString(loadResp).getAsJsonObject();
 
                 final String levelId = currentLevelId;
@@ -85,8 +85,13 @@ public class ReplayCommand implements CommandExecutor {
 
                     world.cleanupDifficultyState(p);
 
-                    if (loadRoot.has("world_patch") && loadRoot.get("world_patch").isJsonObject()) {
-                        JsonObject patchObj = loadRoot.getAsJsonObject("world_patch");
+                    JsonObject patchObj = null;
+                    if (loadRoot.has("bootstrap_patch") && loadRoot.get("bootstrap_patch").isJsonObject()) {
+                        patchObj = loadRoot.getAsJsonObject("bootstrap_patch");
+                    } else if (loadRoot.has("world_patch") && loadRoot.get("world_patch").isJsonObject()) {
+                        patchObj = loadRoot.getAsJsonObject("world_patch");
+                    }
+                    if (patchObj != null) {
                         Map<String, Object> patch = GSON.fromJson(patchObj, MAP_TYPE);
                         if (patch != null && !patch.isEmpty()) {
                             world.execute(p, patch);
