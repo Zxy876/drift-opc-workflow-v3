@@ -3555,6 +3555,64 @@ def api_story_advance(player_id: str, payload: Dict[str, Any]):
 
 
 # ============================================================
+# ✔ 只读获取当前关卡难度（无副作用）
+# ============================================================
+@router.get("/difficulty/{player_id}")
+def api_story_difficulty(player_id: str):
+    """
+    只读获取玩家当前关卡的难度等级 (1-5)。
+    不会触发任何状态变更。
+
+    返回:
+    {
+      "status": "ok",
+      "current_level_id": str | null,
+      "current_difficulty": int,
+    }
+    """
+    current_level_id = None
+    current_difficulty = 1
+
+    # 尝试从 quest runtime 获取当前关卡
+    try:
+        from app.core.quest.runtime import quest_runtime
+        snap = quest_runtime.get_runtime_snapshot(player_id)
+        if isinstance(snap, dict) and snap.get("level_id"):
+            current_level_id = str(snap["level_id"])
+    except Exception:
+        pass
+
+    # 回退到 story state
+    if not current_level_id:
+        try:
+            state = story_engine.get_public_state(player_id)
+            story_state = state if isinstance(state, dict) else {}
+            current_level_id = (
+                story_state.get("player_current_level")
+                or story_state.get("current_level")
+                or story_state.get("level_id")
+            )
+        except Exception:
+            pass
+
+    # 推断难度
+    if current_level_id:
+        try:
+            from app.core.story.story_loader import load_level
+            level = load_level(current_level_id)
+            if level is not None:
+                current_difficulty = story_engine._resolve_difficulty(level)
+        except Exception:
+            pass
+
+    return {
+        "status": "ok",
+        "current_level_id": current_level_id,
+        "current_difficulty": current_difficulty,
+    }
+
+
+# ============================================================
 # ✔ 自动过关（难度分级策略）
 # ============================================================
 @router.post("/auto-advance/{player_id}")
