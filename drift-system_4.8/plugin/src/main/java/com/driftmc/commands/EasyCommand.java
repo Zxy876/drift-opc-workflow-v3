@@ -53,13 +53,15 @@ public class EasyCommand implements CommandExecutor {
             try {
                 String stateResp = backend.postJson("/story/state/" + playerId, "{}");
                 JsonObject stateRoot = JsonParser.parseString(stateResp).getAsJsonObject();
+                JsonObject state = stateRoot.has("state") && stateRoot.get("state").isJsonObject()
+                        ? stateRoot.getAsJsonObject("state") : stateRoot;
 
                 String currentLevelId = null;
-                if (stateRoot.has("current_level") && !stateRoot.get("current_level").isJsonNull()) {
-                    currentLevelId = stateRoot.get("current_level").getAsString();
+                if (state.has("player_current_level") && !state.get("player_current_level").isJsonNull()) {
+                    currentLevelId = state.get("player_current_level").getAsString();
                 }
-                if (currentLevelId == null && stateRoot.has("level_id") && !stateRoot.get("level_id").isJsonNull()) {
-                    currentLevelId = stateRoot.get("level_id").getAsString();
+                if (currentLevelId == null && state.has("current_level") && !state.get("current_level").isJsonNull()) {
+                    currentLevelId = state.get("current_level").getAsString();
                 }
 
                 if (currentLevelId == null || currentLevelId.isBlank()) {
