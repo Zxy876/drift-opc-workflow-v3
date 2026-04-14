@@ -1,6 +1,6 @@
 # backend/app/api/story_api.py
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Body
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, List
@@ -3517,9 +3517,21 @@ def api_story_level(level_id: str):
 # ✔ 加载关卡（Minecraft 进入剧情）
 # ============================================================
 @router.post("/load/{player_id}/{level_id}")
-def api_story_load(player_id: str, level_id: str):
+def api_story_load(
+    player_id: str,
+    level_id: str,
+    body: Optional[Dict[str, Any]] = Body(default=None),
+):
+    difficulty_override = (body or {}).get("difficulty_override")
+    if difficulty_override is not None:
+        try:
+            difficulty_override = int(difficulty_override)
+        except (ValueError, TypeError):
+            return {"status": "error", "msg": "difficulty_override must be an integer"}
     try:
-        patch = story_engine.load_level_for_player(player_id, level_id)
+        patch = story_engine.load_level_for_player(
+            player_id, level_id, difficulty_override=difficulty_override
+        )
         return {"status": "ok", "msg": f"{level_id} loaded", "bootstrap_patch": patch}
     except FileNotFoundError:
         return {"status": "error", "msg": f"Level {level_id} not found"}

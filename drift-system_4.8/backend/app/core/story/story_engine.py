@@ -1090,7 +1090,7 @@ class StoryEngine:
     # ============================================================
     # 加载指定关卡（带剧情舞台 + 安全传送）
     # ============================================================
-    def load_level_for_player(self, player_id: str, level_id: str) -> Dict[str, Any]:
+    def load_level_for_player(self, player_id: str, level_id: str, difficulty_override: Optional[int] = None) -> Dict[str, Any]:
         """
         加载指定关卡：
         - 绑定到玩家状态
@@ -1198,7 +1198,7 @@ class StoryEngine:
         # 🎯 DifficultyAmplifier：根据难度等级放大视觉
         # ---------------------------------------------
         level_meta = level.meta or {}
-        difficulty = self._resolve_difficulty(level)
+        difficulty = difficulty_override if difficulty_override is not None else self._resolve_difficulty(level)
         if difficulty >= 1:
             amplify_world_patch(
                 base_patch,
