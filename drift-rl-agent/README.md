@@ -14,6 +14,27 @@ DesignerAgent (LLM + Drift API)
 MetaAgent (双环控制器) → 循环
 ```
 
+## 系统架构
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    MetaAgent (双环控制器)                      │
+│                                                             │
+│  ┌──────────────┐       评估报告       ┌────────────────┐    │
+│  │ PlayerAgent  │ ──────────────────→ │ DesignerAgent  │    │
+│  │ (Mineflayer  │                     │ (LLM GPT-4 +   │    │
+│  │  + Tianshou  │ ←────────────────── │  Drift API)    │    │
+│  │  PPO)        │     新关卡 ID        └────────────────┘    │
+│  └──────┬───────┘                              │            │
+│         │ TCP Bridge :9999                     │            │
+│         ▼                                      ▼            │
+│  ┌──────────────┐                    ┌─────────────────┐    │
+│  │ MC Server    │                    │ Drift Backend   │    │
+│  │ :25565       │                    │ :8000 / :8080   │    │
+│  └──────────────┘                    └─────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+```
+
 ## 快速开始
 
 ### 1. 安装依赖
@@ -109,3 +130,11 @@ evolution:
   flow_zone_max: 0.8
   flow_zone_streak_target: 3
 ```
+
+## 新增功能 (Phase 2)
+
+- **一键启动**: `bash run.sh demo_rl_001 3`
+- **课程学习**: `python meta/run_evolution.py --curriculum --difficulty 5`
+- **批量生成**: `python designer/batch_generate.py --prefix my_world --publish quick`
+- **模型推理**: `python player/play_with_model.py --model checkpoints/player_ppo.pth`
+- **进化可视化**: `python meta/visualize_evolution.py`

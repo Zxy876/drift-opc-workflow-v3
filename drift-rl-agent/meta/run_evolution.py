@@ -41,17 +41,20 @@ def main():
                         help="AsyncAIFlow URL")
     parser.add_argument("--bot-port", type=int, default=9999,
                         help="Mineflayer Bot TCP Bridge 端口")
+    parser.add_argument("--curriculum", action="store_true",
+                        help="启用课程学习：从 D1 开始逐步升级")
     args = parser.parse_args()
 
     # 默认设计描述（按目标难度选择）
+    default_designs = {
+        1: "在平坦的草原上收集 3 颗蓝色宝石。NPC 向导在出生点附近提供提示。",
+        2: "在森林中收集 5 颗宝石，打败 2 只僵尸。NPC 猎人在森林入口提供弓箭。",
+        3: "在浮空岛上收集 5 颗宝石，打败 3 只骷髅弓箭手，到达山顶的传送门。NPC 法师在中途提供治疗。在 120 秒内完成。",
+        4: "在地下洞穴中收集 8 颗符文，打败 5 只洞穴蜘蛛和 1 只末影人。NPC 矿工在第一个岔路口等待。在 180 秒内完成。解锁 3 道石门需要对应颜色的钥匙。",
+        5: "在海底神殿中收集 10 颗深海珍珠，打败守卫者 Boss（血量 200）。NPC 海洋祭司在入口提供水下呼吸药水。在 240 秒内完成。Boss 每 30 秒召唤 3 只小守卫者。需要激活 4 个海晶灯台才能开启 Boss 房间。",
+    }
+
     if args.design is None:
-        default_designs = {
-            1: "在平坦的草原上收集 3 颗蓝色宝石。NPC 向导在出生点附近提供提示。",
-            2: "在森林中收集 5 颗宝石，打败 2 只僵尸。NPC 猎人在森林入口提供弓箭。",
-            3: "在浮空岛上收集 5 颗宝石，打败 3 只骷髅弓箭手，到达山顶的传送门。NPC 法师在中途提供治疗。在 120 秒内完成。",
-            4: "在地下洞穴中收集 8 颗符文，打败 5 只洞穴蜘蛛和 1 只末影人。NPC 矿工在第一个岔路口等待。在 180 秒内完成。解锁 3 道石门需要对应颜色的钥匙。",
-            5: "在海底神殿中收集 10 颗深海珍珠，打败守卫者 Boss（血量 200）。NPC 海洋祭司在入口提供水下呼吸药水。在 240 秒内完成。Boss 每 30 秒召唤 3 只小守卫者。需要激活 4 个海晶灯台才能开启 Boss 房间。",
-        }
         args.design = default_designs.get(args.difficulty, default_designs[3])
 
     # 创建 DesignerAgent
@@ -74,14 +77,34 @@ def main():
         meta.max_generations = args.generations
 
     # 运行进化
-    summary = meta.run_evolution(
-        initial_design=args.design,
-        level_id=args.level,
-        target_difficulty=args.difficulty,
-        use_premium=args.premium,
-    )
-
-    print(f"\n进化摘要: {summary}")
+    if args.curriculum:
+        # 课程学习模式：D1 → D2 → ... → 目标难度
+        print(f"\n[Curriculum] 从 D1 逐步升级到 D{args.difficulty}")
+        for d in range(1, args.difficulty + 1):
+            design_text = default_designs.get(d, default_designs[3])
+            sub_level_id = f"{args.level}_d{d}"
+            print(f"\n{'#' * 70}")
+            print(f"# Curriculum Stage: D{d}")
+            print(f"{'#' * 70}")
+            summary = meta.run_evolution(
+                initial_design=design_text,
+                level_id=sub_level_id,
+                target_difficulty=d,
+                use_premium=args.premium,
+            )
+            if summary.get("in_flow_zone"):
+                print(f"[Curriculum] D{d} 达到 Flow Zone，升级到 D{d + 1}")
+            else:
+                print(f"[Curriculum] D{d} 未达到 Flow Zone，停止升级")
+                break
+    else:
+        summary = meta.run_evolution(
+            initial_design=args.design,
+            level_id=args.level,
+            target_difficulty=args.difficulty,
+            use_premium=args.premium,
+        )
+        print(f"\n进化摘要: {summary}")
 
 
 if __name__ == "__main__":
