@@ -248,6 +248,111 @@ def main():
 
     test("EvolutionLog 读写", test_evolution_log)
 
+    # ─── 7. Phase 4 新增测试 ───
+    print("\n[7] Phase 4: C1/C2/C3/R3/F3/F5 验证...")
+
+    def test_c1_actor_only_load():
+        """C1: actor-only 格式加载（strict=True 应成功）"""
+        import torch
+        from tianshou.utils.net.common import Net
+        from tianshou.utils.net.discrete import Actor
+        import tempfile, os
+        device = torch.device("cpu")
+        net = Net(state_shape=(64,), hidden_sizes=[256, 256], device=device)
+        actor = Actor(net, action_shape=504, device=device).to(device)
+        # 保存纯 actor state_dict
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "actor.pth")
+            torch.save(actor.state_dict(), path)
+            # 模拟 play_with_model / meta_agent 加载逻辑
+            checkpoint = torch.load(path, map_location=device)
+            if isinstance(checkpoint, dict) and "actor" in checkpoint:
+                state_dict = checkpoint["actor"]
+            else:
+                state_dict = checkpoint
+            actor2 = Actor(Net(state_shape=(64,), hidden_sizes=[256, 256], device=device),
+                           action_shape=504, device=device).to(device)
+            actor2.load_state_dict(state_dict, strict=True)
+
+    def test_c1_full_checkpoint_load():
+        """C1: 完整检查点格式加载（读取 checkpoint['actor']）"""
+        import torch
+        from tianshou.utils.net.common import Net
+        from tianshou.utils.net.discrete import Actor
+        import tempfile, os
+        device = torch.device("cpu")
+        net = Net(state_shape=(64,), hidden_sizes=[256, 256], device=device)
+        actor = Actor(net, action_shape=504, device=device).to(device)
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "policy.pth")
+            # 保存完整格式（只需 actor 键存在即可）
+            torch.save({"actor": actor.state_dict(), "extra": "ignored"}, path)
+            checkpoint = torch.load(path, map_location=device)
+            assert isinstance(checkpoint, dict) and "actor" in checkpoint
+            state_dict = checkpoint["actor"]
+            actor2 = Actor(Net(state_shape=(64,), hidden_sizes=[256, 256], device=device),
+                           action_shape=504, device=device).to(device)
+            actor2.load_state_dict(state_dict, strict=True)
+
+    def test_c2_env_close_no_connection():
+        """C2: env.close() 在未连接时不应抛出异常"""
+        from drift_mineflayer_env import DriftMineflayerEnv
+        env = DriftMineflayerEnv.__new__(DriftMineflayerEnv)
+        env.sock = None  # 模拟未连接状态
+        # close() 应静默处理 _send 失败
+        env.close()  # 不应抛出
+
+    def test_c3_flat_wrapper_consistent():
+        """C3: FlatActionWrapper.action() 与 action_utils.flat_to_multi 结果一致"""
+        import numpy as np
+        import gymnasium as gym
+        from train_player import FlatActionWrapper
+        from action_utils import flat_to_multi
+
+        class FakeEnv(gym.Env):
+            def __init__(self):
+                self.action_space = gym.spaces.MultiDiscrete([3, 3, 2, 2, 2, 7])
+                self.observation_space = gym.spaces.Box(low=0, high=1, shape=(1,))
+            def step(self, a): return None, 0, False, False, {}
+            def reset(self, **kw): return np.zeros(1), {}
+
+        wrapper = FlatActionWrapper(FakeEnv())
+        for flat in [0, 1, 100, 503]:
+            assert np.array_equal(wrapper.action(flat), flat_to_multi(flat)), \
+                f"不一致 flat={flat}: wrapper={wrapper.action(flat)} vs utils={flat_to_multi(flat)}"
+
+    def test_r3_evolution_log_immediate_persist():
+        """R3: log_generation 后日志文件应立即存在且可读"""
+        import tempfile, os, json
+        from evolution_log import EvolutionLog
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log = EvolutionLog(log_dir=tmpdir)
+            log.log_generation(0, "design", {"completion_rate": 0.7,
+                "avg_time": 90, "avg_deaths": 0, "easy_usage_rate": 0,
+                "death_causes": {}, "stuck_points": {}, "total_episodes": 5,
+                "avg_exploration": 20})
+            log_file = os.path.join(tmpdir, f"{log.run_id}.jsonl")
+            assert os.path.exists(log_file), "日志文件应在 log_generation 后立即存在"
+            with open(log_file) as f:
+                data = json.loads(f.readline())
+            assert data["generation"] == 0
+
+    def test_f5_run_evolution_has_player_id_flag():
+        """F5: run_evolution.py 的 argparse 应包含 --player-id 参数"""
+        run_evo_path = os.path.join(ROOT, "meta", "run_evolution.py")
+        with open(run_evo_path) as f:
+            src = f.read()
+        assert "--player-id" in src, "--player-id 参数未在 run_evolution.py 中定义"
+        assert "--curriculum" in src, "--curriculum 参数未在 run_evolution.py 中定义"
+        assert "--model" in src, "--model 参数未在 run_evolution.py 中定义"
+
+    test("C1: actor-only 格式加载", test_c1_actor_only_load, requires_torch=True)
+    test("C1: 完整检查点格式加载", test_c1_full_checkpoint_load, requires_torch=True)
+    test("C2: env.close 未连接不抛异常", test_c2_env_close_no_connection)
+    test("C3: FlatWrapper 与 action_utils 一致", test_c3_flat_wrapper_consistent, requires_torch=True)
+    test("R3: EvolutionLog 立即持久化", test_r3_evolution_log_immediate_persist)
+    test("F5: run_evolution --player-id 参数", test_f5_run_evolution_has_player_id_flag)
+
     # ─── 结果 ───
     print(f"\n{'=' * 40}")
     print(f" 结果: {PASS} 通过, {FAIL} 失败, {SKIP} 跳过")
