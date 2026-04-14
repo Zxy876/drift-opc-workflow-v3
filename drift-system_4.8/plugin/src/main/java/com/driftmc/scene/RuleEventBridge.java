@@ -404,6 +404,7 @@ public final class RuleEventBridge {
         }
         UUID playerId = player.getUniqueId();
         playerStates.remove(playerId);
+        advancingPlayers.remove(playerId);
         cooldowns.keySet().removeIf(key -> key.startsWith(playerId.toString() + ":"));
 
         if (questLogHud != null) {
@@ -682,15 +683,34 @@ public final class RuleEventBridge {
                     final String body = resp.body() != null ? resp.body().string() : "{}";
                     plugin.getLogger().info("[AutoAdvance] 响应: " + body.substring(0, Math.min(300, body.length())));
 
+                    if (!resp.isSuccessful()) {
+                        plugin.getLogger().warning("[AutoAdvance] HTTP " + resp.code());
+                        advancingPlayers.remove(playerId);
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            Player p = Bukkit.getPlayer(playerId);
+                            if (p != null && p.isOnline()) {
+                                p.sendMessage(ChatColor.YELLOW + "⚠ 自动跳关失败，请手动输入 /advance 前往下一关。");
+                            }
+                        });
+                        return;
+                    }
+
                     JsonObject root;
                     try {
                         root = JsonParser.parseString(body).getAsJsonObject();
                     } catch (Exception ex) {
                         plugin.getLogger().warning("[AutoAdvance] JSON 解析失败: " + ex.getMessage());
                         advancingPlayers.remove(playerId);
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            Player p = Bukkit.getPlayer(playerId);
+                            if (p != null && p.isOnline()) {
+                                p.sendMessage(ChatColor.YELLOW + "⚠ 自动跳关失败，请手动输入 /advance 前往下一关。");
+                            }
+                        });
                         return;
                     }
 
+                    final String status = root.has("status") ? root.get("status").getAsString() : "ok";
                     final String action = root.has("action") ? root.get("action").getAsString() : "prompt";
                     final String message = root.has("message") ? root.get("message").getAsString() : "";
                     final int difficulty = root.has("current_difficulty") ? root.get("current_difficulty").getAsInt() : 1;
@@ -705,6 +725,15 @@ public final class RuleEventBridge {
                         Player p = Bukkit.getPlayer(playerId);
                         if (p == null || !p.isOnline()) {
                             advancingPlayers.remove(playerId);
+                            return;
+                        }
+
+                        if ("error".equals(status)) {
+                            advancingPlayers.remove(playerId);
+                            p.sendMessage(ChatColor.YELLOW + "⚠ " + message);
+                            p.sendMessage(ChatColor.GRAY + "输入 " + ChatColor.WHITE + "/advance"
+                                    + ChatColor.GRAY + " 手动前往下一关");
+                            plugin.getLogger().warning("[AutoAdvance] 后端返回错误: " + message);
                             return;
                         }
 

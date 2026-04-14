@@ -3619,7 +3619,7 @@ def api_story_auto_advance(player_id: str):
         except Exception as exc:
             return {
                 "status": "error",
-                "action": "auto",
+                "action": "error",
                 "current_level_id": current_level_id,
                 "current_difficulty": current_difficulty,
                 "next_level_id": next_level_id,
