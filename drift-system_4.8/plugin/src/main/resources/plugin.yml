@@ -136,6 +136,14 @@ commands:
     usage: "/debugpatch"
     permission: "drift.taskdebug"
 
+  replay:
+    description: "重玩当前关卡（重置进度）"
+    usage: "/replay"
+
+  easy:
+    description: "降低当前关卡难度并重新加载"
+    usage: "/easy"
+
   driftload:
     description: "[RCON/Console] 为在线玩家加载指定关卡（后端 push-load 专用）"
     usage: "/driftload <player_name> <level_id>"

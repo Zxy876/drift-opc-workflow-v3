@@ -16,6 +16,7 @@ import com.driftmc.commands.CinematicCommand;
 import com.driftmc.commands.CreateLevelCommand;
 import com.driftmc.commands.DriftCommand;
 import com.driftmc.commands.DriftLoadCommand;
+import com.driftmc.commands.EasyCommand;
 import com.driftmc.commands.HeartMenuCommand;
 import com.driftmc.commands.LevelCommand;
 import com.driftmc.commands.LevelsCommand;
@@ -23,6 +24,7 @@ import com.driftmc.commands.MiniMapCommand;
 import com.driftmc.commands.NpcMasterCommand;
 import com.driftmc.commands.QuestLogCommand;
 import com.driftmc.commands.RecommendCommand;
+import com.driftmc.commands.ReplayCommand;
 import com.driftmc.commands.SayToAICommand;
 import com.driftmc.commands.StoryCreativeCommand;
 import com.driftmc.commands.StoryRuntimeToolCommand;
@@ -191,7 +193,7 @@ public class DriftPlugin extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(storyCreativeManager, this);
 
         // 注册通用规则事件监听器
-        Bukkit.getPluginManager().registerEvents(new RuleEventListener(ruleEventBridge), this);
+        Bukkit.getPluginManager().registerEvents(new RuleEventListener(ruleEventBridge, worldPatcher), this);
 
         // 注册 NPC 生命周期监听
         Bukkit.getPluginManager().registerEvents(npcManager, this);
@@ -231,6 +233,8 @@ public class DriftPlugin extends JavaPlugin {
         createLevelCommand.setIntentRouter2(intentRouter2);
         createLevelCommand.setIntentDispatcher2(intentDispatcher2);
         registerCommand("create", createLevelCommand);
+        registerCommand("replay", new ReplayCommand(this, backend, worldPatcher));
+        registerCommand("easy", new EasyCommand(this, backend, worldPatcher));
         registerCommand("driftload", new DriftLoadCommand(this, backend, worldPatcher));
         registerCommand("debugscene", new TaskDebugCommand(this, backend, taskDebugToken, TaskDebugCommand.ViewMode.SCENE));
         registerCommand("debuginventory", new TaskDebugCommand(this, backend, taskDebugToken, TaskDebugCommand.ViewMode.INVENTORY));
@@ -266,6 +270,7 @@ public class DriftPlugin extends JavaPlugin {
         }
 
         if (worldPatcher != null) {
+            Bukkit.getOnlinePlayers().forEach(worldPatcher::cleanupDifficultyState);
             worldPatcher.shutdown();
         }
         if (payloadExecutor != null) {

@@ -13,6 +13,7 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
 
 /**
@@ -21,9 +22,11 @@ import org.bukkit.inventory.ItemStack;
 public final class RuleEventListener implements Listener {
 
     private final RuleEventBridge bridge;
+    private final SceneAwareWorldPatchExecutor worldPatcher;
 
-    public RuleEventListener(RuleEventBridge bridge) {
+    public RuleEventListener(RuleEventBridge bridge, SceneAwareWorldPatchExecutor worldPatcher) {
         this.bridge = bridge;
+        this.worldPatcher = worldPatcher;
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -72,5 +75,12 @@ public final class RuleEventListener implements Listener {
             displayName = ChatColor.stripColor(stack.getItemMeta().getDisplayName());
         }
         bridge.emitItemCollectTriggers(player, stack.getType(), displayName, loc);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        if (worldPatcher != null) {
+            worldPatcher.cleanupDifficultyState(event.getPlayer());
+        }
     }
 }
