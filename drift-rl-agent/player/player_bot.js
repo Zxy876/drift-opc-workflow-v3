@@ -16,6 +16,7 @@ const net = require('net')
 const fs = require('fs')
 const path = require('path')
 const yaml = require('js-yaml')
+const http = require('http')
 
 // ─── 加载配置 ─────────────────────────────────────────────
 let config = {
@@ -42,7 +43,61 @@ const BRIDGE_PORT = config.bot?.bridge_port || 9999
 // ─── 聊天历史 ──────────────────────────────────────────────
 const chatHistory = []
 const MAX_CHAT_HISTORY = 100
+// ─── Drift API 状态缓存 ────────────────────────────────
+const DRIFT_FETCH_INTERVAL = 5000  // 5 秒源一次
+let driftStateCache = {}
+let driftLastFetch = 0
 
+/**
+ * 从 Drift 后端获取当前玩家关卡状态（异步）
+ */
+function fetchDriftState() {
+  const DRIFT_URL = config.drift?.backend_url || 'http://35.201.132.58:8000'
+  const BOT_NAME_ENCODED = encodeURIComponent(BOT_NAME)
+  const url = `${DRIFT_URL}/story/status/${BOT_NAME_ENCODED}`
+
+  return new Promise((resolve) => {
+    try {
+      const parsedUrl = new URL(url)
+      const options = {
+        hostname: parsedUrl.hostname,
+        port: parsedUrl.port || 80,
+        path: parsedUrl.pathname + parsedUrl.search,
+        method: 'GET',
+        timeout: 3000,
+      }
+      const req = http.request(options, (res) => {
+        let body = ''
+        res.on('data', d => { body += d })
+        res.on('end', () => {
+          try {
+            const data = JSON.parse(body)
+            driftStateCache = data
+            driftLastFetch = Date.now()
+            resolve(data)
+          } catch {
+            resolve({})
+          }
+        })
+      })
+      req.on('error', () => resolve({}))
+      req.on('timeout', () => { req.destroy(); resolve({}) })
+      req.end()
+    } catch {
+      resolve({})
+    }
+  })
+}
+
+/**
+ * 返回缓存的 Drift 状态（满足新鲜度则直接返回，否则重新获取）
+ */
+async function getDriftState() {
+  if (Date.now() - driftLastFetch > DRIFT_FETCH_INTERVAL) {
+    await fetchDriftState()
+  }
+  return driftStateCache
+}
 // ─── 关卡事件检测标志 ──────────────────────────────────────
 let levelCompleted = false
 let lastDeathCause = null
@@ -183,6 +238,12 @@ function getState() {
     level_completed: levelCompleted,
     triggers_completed: triggersCompleted,
     last_death_cause: lastDeathCause,
+    // Drift 后端同步字段（由 getDriftState 异步刷新）
+    current_difficulty: driftStateCache.current_difficulty || 0,
+    triggers_remaining: driftStateCache.triggers_remaining || 0,
+    total_triggers: driftStateCache.total_triggers || 0,
+    quest_progress: driftStateCache.quest_progress || 0,
+    time_limit: driftStateCache.time_limit || 0,
   }
 }
 
@@ -279,6 +340,10 @@ function handleCommand(cmd) {
       return { ok: true, ready: botReady, time: Date.now() }
 
     case 'get_state':
+      // 触发异步刷新 Drift 状态（不阀塞当前返回）
+      if (Date.now() - driftLastFetch > DRIFT_FETCH_INTERVAL) {
+        getDriftState().catch(() => {})
+      }
       return getState()
 
     case 'action':
@@ -295,9 +360,13 @@ function handleCommand(cmd) {
     case 'reset':
       // 重置：加载指定关卡，清除本局状态标志
       resetLevelFlags()
+      driftStateCache = {}  // 清除 Drift 状态缓存
+      driftLastFetch = 0
       if (bot && botReady && cmd.level_id) {
         bot.chat(`/level ${cmd.level_id}`)
       }
+      // 3 秒后预加载 Drift 状态
+      setTimeout(() => getDriftState().catch(() => {}), 3000)
       return { ok: true, level_id: cmd.level_id }
 
     case 'look_at':

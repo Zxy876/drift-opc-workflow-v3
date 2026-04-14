@@ -138,3 +138,54 @@ evolution:
 - **批量生成**: `python designer/batch_generate.py --prefix my_world --publish quick`
 - **模型推理**: `python player/play_with_model.py --model checkpoints/player_ppo.pth`
 - **进化可视化**: `python meta/visualize_evolution.py`
+
+## 新增功能 (Phase 3)
+
+### 观测空间扩展 (F1 + S1)
+`player/observation_space.py` 统一定义 64 维观测向量布局；`obs[57:62]` 新增有效信号：
+- `obs[57]` 当前 Drift 难度 (0–1)
+- `obs[58]` 剩余触发器比例
+- `obs[59]` 附近 NPC/玩家检测
+- `obs[60]` 任务进度（触发器完成率）
+- `obs[61]` 时间压力（剩余时间比例）
+
+### Drift API 集成 (F2)
+`player/player_bot.js` 每 5 秒异步拉取 `/story/status/{player_id}`，将 `current_difficulty`、`triggers_remaining`、`total_triggers`、`quest_progress`、`time_limit` 注入到 `getState()` 返回值中，拼接进 obs 向量。
+
+### 新参数支持 (F3 + F4)
+- `run_evolution.py` 支持 `--model <path>` 传入训练好的 PPO 权重
+- `train_player.py` 从配置文件读取 `num_train_envs` / `num_test_envs`，自动检测多 Bot 冲突并降级
+
+### 动作工具库 (Q2)
+`player/action_utils.py` 提供 `flat_to_multi()` / `multi_to_flat()` 双向转换，`play_with_model.py` 和 `meta_agent.py` 均改用此模块，消除代码重复。
+
+### 模型加载健壮性 (Q1)
+所有 `actor.load_state_dict(...)` 改为优先 `strict=True`，失败时自动过滤形状不匹配的键后降级 `strict=False`，兼容跨版本 checkpoint。
+
+### Drift 关卡激活 (E1)
+`MetaAgent.run_evolution()` 在每次发布新关卡后调用 `POST /story/load/{player_id}/{new_level_id}`，确保 Drift 后端完成关卡切换。
+
+### 发布验证 (E2)
+`DesignerAgent._publish_quick()` 发布后等待 2 秒并调用 `get_existing_levels()` 验证关卡已写入，返回值新增 `verified` 字段。
+
+### 语法参考扩充 (E3)
+`design_prompts.py` 两个 Prompt 中的语法参考新增：NPC 行为类型、陷阱类型、天气、复活点、关卡阶段、开锁条件等高级语法示例。
+
+### run.sh 增强 (E4)
+重写 `run.sh`，支持任意数量额外参数透传（如 `--premium --model checkpoints/xxx.pth`），新增 `cleanup()` trap 确保 Bot 进程在脚本退出时随之终止。
+
+### 新增文件
+| 文件 | 用途 |
+|------|------|
+| `player/observation_space.py` | 观测维度统一定义 + `get_observation_space()` |
+| `player/action_utils.py` | `flat_to_multi()` / `multi_to_flat()` |
+| `tests/smoke_test.py` | 离线冒烟测试（无需 MC 服务器） |
+| `tests/__init__.py` | Python 包标记 |
+| `viewer/dashboard.html` | Chart.js 进化可视化看板 |
+| `viewer/record.sh` | ffmpeg Bot 视角录制脚本 |
+
+### 运行冒烟测试
+```bash
+python tests/smoke_test.py
+# 无需 MC 服务器，16 项测试 (torch 未装时 4 项跳过)
+```

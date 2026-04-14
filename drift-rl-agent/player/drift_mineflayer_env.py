@@ -16,6 +16,7 @@ import gymnasium as gym
 from gymnasium import spaces
 
 from reward_functions import compute_reward, load_reward_params
+from observation_space import get_observation_space, OBSERVATION_DIM
 
 
 class DriftMineflayerEnv(gym.Env):
@@ -62,10 +63,8 @@ class DriftMineflayerEnv(gym.Env):
         # 加载奖励参数
         self.reward_params = load_reward_params(config_path)
 
-        # 观测空间：64 维向量
-        self.observation_space = spaces.Box(
-            low=-1e4, high=1e4, shape=(64,), dtype=np.float32
-        )
+        # 观测空间：64 维向量（由 observation_space.py 统一定义）
+        self.observation_space = get_observation_space()
 
         # 动作空间
         self.action_space = spaces.MultiDiscrete([3, 3, 2, 2, 2, 7])
@@ -182,7 +181,33 @@ class DriftMineflayerEnv(gym.Env):
         # 附近方块数量 (1)
         obs[56] = min(len(state.get("nearby_blocks", [])), 50) / 50.0
 
-        # 预留 (57-63)
+        # 当前难度 (1): 归一化到 [0,1]
+        obs[57] = state.get("current_difficulty", 0) / 5.0
+
+        # 剩余触发器比例 (1)
+        obs[58] = min(state.get("triggers_remaining", 0), 20) / 20.0
+
+        # 是否有 NPC / 玩家在附近 (1)
+        entities = state.get("nearby_entities", [])
+        obs[59] = 1.0 if any(
+            e.get("type") == "player" or e.get("name", "").startswith("NPC")
+            for e in entities
+        ) else 0.0
+
+        # 任务进度（触发器完成比例）(1)
+        total_triggers = state.get("total_triggers", 1)
+        obs[60] = min(
+            state.get("triggers_completed", 0) / max(total_triggers, 1), 1.0
+        )
+
+        # 时间压力（剩余时间比例）(1): 无限制时为 1.0
+        time_limit = state.get("time_limit", 0)
+        obs[61] = (
+            max(0.0, (time_limit - self.steps) / time_limit)
+            if time_limit > 0 else 1.0
+        )
+
+        # 预留 obs[62-63]
 
         return obs
 

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>Drift RL Agent — 进化数据看板</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; margin: 20px; background: #1a1a2e; color: #eee; }
+    h1 { text-align: center; color: #00d4ff; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 1200px; margin: 0 auto; }
+    .card { background: #16213e; border-radius: 12px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+    .card h3 { color: #00d4ff; margin-top: 0; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px 12px; text-align: center; border-bottom: 1px solid #333; }
+    th { color: #00d4ff; }
+    .flow-zone { color: #00ff88; font-weight: bold; }
+    .not-flow { color: #ff6b6b; }
+    .summary { text-align: center; font-size: 1.2em; margin: 20px 0; }
+    .summary span { color: #00d4ff; font-weight: bold; }
+    canvas { max-height: 300px; }
+  </style>
+</head>
+<body>
+  <h1>🎮 Drift RL Agent — 进化数据看板</h1>
+
+  <div style="text-align:center; margin: 20px;">
+    <label>加载进化日志 JSON:
+      <input type="file" id="file-input" accept=".json">
+    </label>
+  </div>
+
+  <div class="summary" id="summary"></div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>📈 通关率趋势</h3>
+      <canvas id="crChart"></canvas>
+    </div>
+    <div class="card">
+      <h3>💀 平均死亡数</h3>
+      <canvas id="deathChart"></canvas>
+    </div>
+    <div class="card">
+      <h3>⏱ 平均完成时间</h3>
+      <canvas id="timeChart"></canvas>
+    </div>
+    <div class="card">
+      <h3>🗺 平均探索度</h3>
+      <canvas id="explorationChart"></canvas>
+    </div>
+  </div>
+
+  <div class="card" style="max-width:1200px; margin:20px auto;">
+    <h3>📋 每代详情</h3>
+    <table id="detailTable">
+      <thead>
+        <tr>
+          <th>Gen</th><th>通关率</th><th>平均时间</th><th>平均死亡</th>
+          <th>Easy%</th><th>探索度</th><th>Flow Zone</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <script>
+    let charts = {};
+
+    document.getElementById('file-input').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const data = JSON.parse(evt.target.result);
+          renderDashboard(data);
+        } catch (err) {
+          alert('JSON 解析失败: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    function renderDashboard(data) {
+      const gens = data.generations || [];
+      if (!gens.length) { alert('没有进化数据'); return; }
+
+      const labels = gens.map(g => 'G' + g.generation);
+      const crs = gens.map(g => g.eval.completion_rate);
+      const deaths = gens.map(g => g.eval.avg_deaths);
+      const times = gens.map(g => g.eval.avg_time);
+      const explorations = gens.map(g => g.eval.avg_exploration || 0);
+
+      // Summary
+      const s = data.summary || {};
+      document.getElementById('summary').innerHTML =
+        `Run: <span>${s.run_id || '?'}</span> | ` +
+        `总代数: <span>${s.total_generations || gens.length}</span> | ` +
+        `最终通关率: <span>${((s.final_completion_rate || crs[crs.length-1]) * 100).toFixed(0)}%</span> | ` +
+        `Flow Zone: <span class="${s.in_flow_zone ? 'flow-zone' : 'not-flow'}">${s.in_flow_zone ? 'YES' : 'NO'}</span>`;
+
+      // Charts
+      createChart('crChart', labels, crs, '通关率', 'rgba(0,212,255,0.8)', true);
+      createChart('deathChart', labels, deaths, '平均死亡', 'rgba(255,107,107,0.8)');
+      createChart('timeChart', labels, times, '平均时间(s)', 'rgba(0,255,136,0.8)');
+      createChart('explorationChart', labels, explorations, '平均探索度', 'rgba(255,200,0,0.8)');
+
+      // Table
+      const tbody = document.querySelector('#detailTable tbody');
+      tbody.innerHTML = '';
+      gens.forEach(g => {
+        const ev = g.eval;
+        const cr = ev.completion_rate;
+        const inFZ = cr >= 0.6 && cr <= 0.8;
+        tbody.innerHTML += `<tr>
+          <td>${g.generation}</td>
+          <td>${(cr * 100).toFixed(0)}%</td>
+          <td>${ev.avg_time.toFixed(0)}s</td>
+          <td>${ev.avg_deaths.toFixed(1)}</td>
+          <td>${(ev.easy_usage_rate * 100).toFixed(0)}%</td>
+          <td>${(ev.avg_exploration || 0).toFixed(0)}</td>
+          <td class="${inFZ ? 'flow-zone' : 'not-flow'}">${inFZ ? 'YES' : 'NO'}</td>
+        </tr>`;
+      });
+    }
+
+    function createChart(canvasId, labels, data, label, color, showFlowZone) {
+      if (charts[canvasId]) charts[canvasId].destroy();
+      const ctx = document.getElementById(canvasId).getContext('2d');
+      const datasets = [{
+        label, data, borderColor: color, backgroundColor: color.replace('0.8', '0.2'),
+        fill: true, tension: 0.3, pointRadius: 5,
+      }];
+
+      const plugins = [];
+      if (showFlowZone) {
+        plugins.push({
+          id: 'flowZone',
+          beforeDraw(chart) {
+            const { ctx: c, chartArea: { left, right }, scales: { y } } = chart;
+            const y1 = y.getPixelForValue(0.6);
+            const y2 = y.getPixelForValue(0.8);
+            c.fillStyle = 'rgba(0,255,136,0.1)';
+            c.fillRect(left, y2, right - left, y1 - y2);
+          }
+        });
+      }
+
+      charts[canvasId] = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          scales: {
+            y: { beginAtZero: true, max: showFlowZone ? 1 : undefined,
+                 ticks: { color: '#aaa' }, grid: { color: '#333' } },
+            x: { ticks: { color: '#aaa' }, grid: { color: '#333' } },
+          },
+          plugins: { legend: { labels: { color: '#eee' } } },
+        },
+        plugins,
+      });
+    }
+  </script>
+</body>
+</html>

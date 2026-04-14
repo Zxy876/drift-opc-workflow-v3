@@ -43,6 +43,8 @@ def main():
                         help="Mineflayer Bot TCP Bridge 端口")
     parser.add_argument("--curriculum", action="store_true",
                         help="启用课程学习：从 D1 开始逐步升级")
+    parser.add_argument("--model", type=str, default=None,
+                        help="训练好的 PPO 模型路径（.pth）")
     args = parser.parse_args()
 
     # 默认设计描述（按目标难度选择）
@@ -68,6 +70,7 @@ def main():
         designer=designer,
         bot_port=args.bot_port,
         drift_url=args.drift_url,
+        model_path=args.model,
     )
 
     # 覆盖配置参数

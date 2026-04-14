@@ -13,6 +13,7 @@ import time
 from typing import Optional
 
 import numpy as np
+import requests
 import torch
 import yaml
 
@@ -24,6 +25,7 @@ from drift_mineflayer_env import DriftMineflayerEnv
 from designer_agent import DesignerAgent
 from eval_bridge import analyze_play_data, format_eval_for_llm
 from evolution_log import EvolutionLog
+from action_utils import flat_to_multi
 
 
 class MetaAgent:
@@ -88,23 +90,23 @@ class MetaAgent:
             net = Net(state_shape=(64,), hidden_sizes=[256, 256], device=device)
             actor = Actor(net, action_shape=504, device=device).to(device)
             state_dict = torch.load(model_path, map_location=device)
-            actor.load_state_dict(state_dict, strict=False)
+            # Q1: 优先 strict=True，失败则过滤并降级
+            try:
+                actor.load_state_dict(state_dict, strict=True)
+            except RuntimeError:
+                filtered = {
+                    k: v for k, v in state_dict.items()
+                    if k in actor.state_dict()
+                    and actor.state_dict()[k].shape == v.shape
+                }
+                actor.load_state_dict(filtered, strict=False)
+                print(f"[Meta] 降级 loose 加载（跨版本兼容）")
             actor.eval()
             self._policy = actor
             print(f"[Meta] 已加载训练模型: {model_path}")
         except Exception as e:
             print(f"[Meta] 加载模型失败，使用随机策略: {e}")
             self._policy = None
-
-    def _decode_action(self, flat_action: int) -> np.ndarray:
-        """Discrete(504) → MultiDiscrete([3,3,2,2,2,7])"""
-        nvec = [3, 3, 2, 2, 2, 7]
-        result = []
-        remaining = flat_action
-        for n in reversed(nvec):
-            result.append(remaining % n)
-            remaining //= n
-        return np.array(list(reversed(result)), dtype=np.int64)
 
     def run_evolution(
         self,
@@ -179,6 +181,17 @@ class MetaAgent:
             )
             print(f"[Designer] 发布结果: {publish_result.get('method', '?')}")
 
+            # 通知 Drift 加载新关卡（E1）
+            try:
+                load_url = f"{self.drift_url}/story/load/{player_id}/{new_level_id}"
+                resp = requests.post(load_url, timeout=10)
+                if resp.ok:
+                    print(f"[Meta] Drift 已加载新关卡: {new_level_id}")
+                else:
+                    print(f"[Meta] 关卡加载请求返回 {resp.status_code}")
+            except requests.RequestException as e:
+                print(f"[Meta] 关卡加载请求失败(可忽略): {e}")
+
             # 记录进化日志
             self.logger.log_generation(
                 gen, current_design, eval_report, new_design, publish_result
@@ -229,7 +242,7 @@ class MetaAgent:
                     with torch.no_grad():
                         logits, _ = self._policy(obs_tensor)
                         flat_action = logits.argmax(dim=1).item()
-                    action = self._decode_action(flat_action)
+                    action = flat_to_multi(flat_action)
                 else:
                     # 随机策略
                     action = env.action_space.sample()

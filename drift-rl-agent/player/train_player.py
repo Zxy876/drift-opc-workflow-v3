@@ -119,13 +119,21 @@ def train(args):
     print(f"[Train] Level: {args.level}")
     print(f"[Train] Config: {config}")
 
-    # 注意：多环境需要多个 Bot 实例（不同端口）
-    # 当前简化版：单环境训练
+    # 多环境注意：每个环境需要独立的 Bot 实例（不同端口）
+    num_train = config.get("num_train_envs", 1)
+    num_test = config.get("num_test_envs", 1)
+    if num_train > 1:
+        print(f"[Train] 警告: num_train_envs={num_train} 需要多个 Bot 实例; 当前自动降级为 1")
+        num_train = 1
+    if num_test > 1:
+        print(f"[Train] 警告: num_test_envs={num_test} 需要多个 Bot 实例; 当前自动降级为 1")
+        num_test = 1
+
     train_envs = DummyVectorEnv(
-        [make_env(args.level, "RLAgent_train", 9999)]
+        [make_env(args.level, "RLAgent_train", 9999) for _ in range(num_train)]
     )
     test_envs = DummyVectorEnv(
-        [make_env(args.level, "RLAgent_test", 9999)]
+        [make_env(args.level, "RLAgent_test", 9999) for _ in range(num_test)]
     )
 
     obs_shape = (64,)
@@ -166,7 +174,7 @@ def train(args):
 
     buffer = VectorReplayBuffer(
         total_size=config["buffer_size"],
-        buffer_num=1,
+        buffer_num=num_train,
     )
 
     train_collector = Collector(policy, train_envs, buffer)

@@ -17,6 +17,7 @@ import torch
 sys.path.insert(0, os.path.dirname(__file__))
 
 from drift_mineflayer_env import DriftMineflayerEnv
+from action_utils import flat_to_multi
 
 try:
     from tianshou.utils.net.common import Net
@@ -26,17 +27,6 @@ except ImportError:
     sys.exit(1)
 
 
-def decode_action(flat_action: int) -> np.ndarray:
-    """Discrete(504) → MultiDiscrete([3,3,2,2,2,7])"""
-    nvec = [3, 3, 2, 2, 2, 7]
-    result = []
-    remaining = flat_action
-    for n in reversed(nvec):
-        result.append(remaining % n)
-        remaining //= n
-    return np.array(list(reversed(result)), dtype=np.int64)
-
-
 def play(args):
     device = torch.device("cpu")
 
@@ -44,7 +34,16 @@ def play(args):
     net = Net(state_shape=(64,), hidden_sizes=[256, 256], device=device)
     actor = Actor(net, action_shape=504, device=device).to(device)
     state_dict = torch.load(args.model, map_location=device)
-    actor.load_state_dict(state_dict, strict=False)
+    # Q1: 优先尝试 strict=True，如果失败则过滤不匹配的键并降级
+    try:
+        actor.load_state_dict(state_dict, strict=True)
+    except RuntimeError:
+        filtered = {
+            k: v for k, v in state_dict.items()
+            if k in actor.state_dict() and actor.state_dict()[k].shape == v.shape
+        }
+        actor.load_state_dict(filtered, strict=False)
+        print(f"[Play] 和 loose 加载模型（跨版本兼容）")
     actor.eval()
     print(f"[Play] 模型已加载: {args.model}")
 
@@ -66,7 +65,7 @@ def play(args):
             with torch.no_grad():
                 logits, _ = actor(obs_tensor)
                 flat_action = logits.argmax(dim=1).item()
-            action = decode_action(flat_action)
+            action = flat_to_multi(flat_action)
             obs, reward, terminated, truncated, info = env.step(action)
             total_reward += reward
             done = terminated or truncated

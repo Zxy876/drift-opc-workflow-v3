@@ -160,7 +160,21 @@ class DesignerAgent:
             timeout=30,
         )
         resp.raise_for_status()
-        return {"method": "quick", "result": resp.json()}
+        result = resp.json()
+
+        # 验证关卡是否已成功加入 Drift（E2）
+        verified = False
+        try:
+            time.sleep(2)
+            levels = self.get_existing_levels()
+            verified = any(
+                lv.get("level_id") == level_id or lv.get("id") == level_id
+                for lv in levels
+            )
+        except Exception:
+            pass
+
+        return {"method": "quick", "result": result, "verified": verified}
 
     def _publish_premium(self, text: str, level_id: str, player_id: str, difficulty: int) -> dict:
         """Premium Publish: POST /planner/execute → 轮询工作流"""
