@@ -18,6 +18,7 @@ node_modules/
 
 # Minecraft/Drift runtime
 world/
+!plugin/src/**/world/
 logs/
 server/
 *.pid
