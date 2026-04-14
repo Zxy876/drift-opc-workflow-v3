@@ -3543,6 +3543,125 @@ def api_story_advance(player_id: str, payload: Dict[str, Any]):
 
 
 # ============================================================
+# ✔ 自动过关（难度分级策略）
+# ============================================================
+@router.post("/auto-advance/{player_id}")
+def api_story_auto_advance(player_id: str):
+    """
+    玩家完成当前关卡后自动跳转下一关。
+
+    根据当前关卡难度 (D1-D5) 返回不同的跳转策略：
+      - D1-D3 (胜率≥80%): action="auto"  → 直接跳转
+      - D4    (胜率~74%): action="prompt" → 给玩家选择（继续/重玩）
+      - D5    (胜率~23%): action="warn"   → 提示高难度，建议降级
+
+    返回:
+    {
+      "status": "ok",
+      "action": "auto" | "prompt" | "warn" | "end",
+      "current_level_id": str,
+      "current_difficulty": int,
+      "next_level_id": str | null,
+      "bootstrap_patch": dict | null,   // action=="auto" 时直接包含下一关的 patch
+      "message": str,
+    }
+    """
+    try:
+        state = story_engine.get_public_state(player_id)
+    except Exception:
+        state = {}
+
+    current_level_id = None
+    current_difficulty = 1
+
+    # 获取当前关卡和难度
+    try:
+        from app.core.quest.runtime import quest_runtime
+        snap = quest_runtime.get_runtime_snapshot(player_id)
+        if isinstance(snap, dict) and snap.get("level_id"):
+            current_level_id = str(snap["level_id"])
+    except Exception:
+        pass
+
+    if not current_level_id:
+        story_state = state if isinstance(state, dict) else {}
+        current_level_id = story_state.get("current_level") or story_state.get("level_id")
+
+    # 推断当前难度
+    if current_level_id:
+        try:
+            from app.core.story.story_loader import load_level
+            level = load_level(current_level_id)
+            if level is not None:
+                current_difficulty = story_engine._resolve_difficulty(level)
+        except Exception:
+            pass
+
+    # 获取下一关 ID
+    next_level_id = story_engine.get_next_level_id(current_level_id, player_id=player_id)
+
+    if not next_level_id:
+        return {
+            "status": "ok",
+            "action": "end",
+            "current_level_id": current_level_id,
+            "current_difficulty": current_difficulty,
+            "next_level_id": None,
+            "bootstrap_patch": None,
+            "message": "🎉 已经是最后一关了，恭喜通关！",
+        }
+
+    # 分级策略
+    if current_difficulty <= 3:
+        # D1-D3: 直接自动跳转
+        try:
+            patch = story_engine.load_level_for_player(player_id, next_level_id)
+        except Exception as exc:
+            return {
+                "status": "error",
+                "action": "error",
+                "current_level_id": current_level_id,
+                "current_difficulty": current_difficulty,
+                "next_level_id": next_level_id,
+                "bootstrap_patch": None,
+                "message": f"自动跳转失败: {exc}",
+            }
+        return {
+            "status": "ok",
+            "action": "auto",
+            "current_level_id": current_level_id,
+            "current_difficulty": current_difficulty,
+            "next_level_id": next_level_id,
+            "bootstrap_patch": patch,
+            "message": f"✨ 自动进入下一关: {next_level_id}",
+        }
+
+    elif current_difficulty == 4:
+        # D4: 给玩家选择
+        return {
+            "status": "ok",
+            "action": "prompt",
+            "current_level_id": current_level_id,
+            "current_difficulty": current_difficulty,
+            "next_level_id": next_level_id,
+            "bootstrap_patch": None,
+            "message": "🏆 关卡完成！输入 /advance 继续下一关，或 /replay 重玩本关。",
+        }
+
+    else:
+        # D5: 高难度提示
+        return {
+            "status": "ok",
+            "action": "warn",
+            "current_level_id": current_level_id,
+            "current_difficulty": current_difficulty,
+            "next_level_id": next_level_id,
+            "bootstrap_patch": None,
+            "message": "🌟 恭喜完成高难度关卡！输入 /advance 挑战更高难度，或 /easy 降低难度。",
+        }
+
+
+# ============================================================
 # ✔ 获取玩家当前 Story 状态
 # ============================================================
 @router.get("/state/{player_id}")
