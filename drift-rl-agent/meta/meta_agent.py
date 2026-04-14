@@ -2,30 +2,30 @@
 MetaAgent — 双环自进化控制器
 
 外环（慢）: DesignerAgent 每轮改进一次关卡设计
-内环（快）: PlayerAgent 每轮玩 N 局评估
+内环（快）: StrategyBot 每轮玩 N 局评估
 
 进化停止条件：通关率连续 3 代在 [60%, 80%]（Flow Zone）
 """
 
 import os
+import random
 import sys
 import time
 from typing import Optional
 
-import numpy as np
 import requests
-import torch
 import yaml
 
 # 添加 parent 目录到 path（方便 import）
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "player"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "designer"))
 
-from drift_mineflayer_env import DriftMineflayerEnv
+from bot_client import BotClient
+from strategy_bot import StrategyBot
+from skill_profiles import load_skill_profiles, EPISODES_PER_SKILL
 from designer_agent import DesignerAgent
-from eval_bridge import analyze_play_data, format_eval_for_llm
+from eval_bridge import analyze_multi_skill_data, format_multi_skill_eval
 from evolution_log import EvolutionLog
-from action_utils import flat_to_multi
 
 
 class MetaAgent:
@@ -38,25 +38,18 @@ class MetaAgent:
         bot_port: int = 9999,
         drift_url: str = "http://35.201.132.58:8000",
         config_path: Optional[str] = None,
-        model_path: Optional[str] = None,  # 新增：训练好的模型路径
     ):
         self.designer = designer
         self.bot_host = bot_host
         self.bot_port = bot_port
         self.drift_url = drift_url
         self.logger = EvolutionLog()
-        self.model_path = model_path
-        self._policy = None
-        self.checkpoint_dir = os.path.join(os.path.dirname(__file__), "..", "checkpoints")
-        os.makedirs(self.checkpoint_dir, exist_ok=True)
-        self.best_completion_rate = 0.0
-        self.best_generation = -1
 
         # 加载配置
         self._load_config(config_path)
 
-        if model_path and os.path.exists(model_path):
-            self._load_policy(model_path)
+        # 加载技能档案
+        self.skill_profiles = load_skill_profiles()
 
     def _load_config(self, config_path: Optional[str]):
         """加载进化参数"""
@@ -83,40 +76,6 @@ class MetaAgent:
         except FileNotFoundError:
             pass
 
-    def _load_policy(self, model_path: str):
-        """加载训练好的 PPO 策略"""
-        try:
-            sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "player"))
-            from tianshou.utils.net.common import Net
-            from tianshou.utils.net.discrete import Actor
-
-            device = torch.device("cpu")
-            net = Net(state_shape=(64,), hidden_sizes=[256, 256], device=device)
-            actor = Actor(net, action_shape=504, device=device).to(device)
-            checkpoint = torch.load(model_path, map_location=device)
-            # C1: 支持 actor-only 格式和完整检查点格式
-            if isinstance(checkpoint, dict) and "actor" in checkpoint:
-                state_dict = checkpoint["actor"]
-            else:
-                state_dict = checkpoint
-            # Q1: 优先 strict=True，失败则过滤并降级
-            try:
-                actor.load_state_dict(state_dict, strict=True)
-            except RuntimeError:
-                filtered = {
-                    k: v for k, v in state_dict.items()
-                    if k in actor.state_dict()
-                    and actor.state_dict()[k].shape == v.shape
-                }
-                actor.load_state_dict(filtered, strict=False)
-                print(f"[Meta] 降级 loose 加载（跨版本兼容）")
-            actor.eval()
-            self._policy = actor
-            print(f"[Meta] 已加载训练模型: {model_path}")
-        except Exception as e:
-            print(f"[Meta] 加载模型失败，使用随机策略: {e}")
-            self._policy = None
-
     def run_evolution(
         self,
         initial_design: str,
@@ -135,7 +94,7 @@ class MetaAgent:
         flow_zone_streak = 0
 
         print(f"\n{'#' * 70}")
-        print(f"# Drift RL Agent — 双环自进化系统")
+        print(f"# Drift RL Agent — 双环自进化系统（StrategyBot）")
         print(f"# 初始关卡: {level_id}")
         print(f"# 目标难度: D{target_difficulty}")
         print(f"# 每代评估: {self.episodes_per_eval} 局")
@@ -147,27 +106,25 @@ class MetaAgent:
             print(f" Generation {gen}")
             print(f"{'=' * 60}")
 
-            # ─── 内环：PlayerAgent 游玩 N 局 ───
-            print(f"\n[Player] 开始游玩 {self.episodes_per_eval} 局...")
+            # ─── 内环：StrategyBot 游玩 N 局 ───
+            print(f"\n[Player] 开始游玩 {self.episodes_per_eval} 局（多技能级别）...")
             play_results = self._run_player_episodes(current_level_id, player_id)
 
             # ─── 评估 ───
-            eval_report = analyze_play_data(play_results)
+            eval_report = analyze_multi_skill_data(play_results)
             cr = eval_report["completion_rate"]
-            print(f"\n[Eval] 通关率: {cr:.0%}")
+            avg_cr = eval_report.get("completion_by_skill", {}).get("average", cr)
+
+            print(f"\n[Eval] 整体通关率: {cr:.0%}")
+            print(f"[Eval] 中等玩家通关率: {avg_cr:.0%}")
             print(f"[Eval] 平均时间: {eval_report['avg_time']:.0f}s")
             print(f"[Eval] 平均死亡: {eval_report['avg_deaths']:.1f}")
             print(f"[Eval] /easy 使用率: {eval_report['easy_usage_rate']:.0%}")
-            print(f"[Eval] 评估报告:\n{format_eval_for_llm(eval_report)}")
-            # F2: 保存最佳检查点
-            if self._policy is not None and cr > self.best_completion_rate:
-                self.best_completion_rate = cr
-                self.best_generation = gen
-                ckpt_path = os.path.join(self.checkpoint_dir, f"best_{level_id}.pth")
-                torch.save({"actor": self._policy.state_dict()}, ckpt_path)
-                print(f"[Meta] 最佳模型已保存 (gen={gen}, cr={cr:.0%}): {ckpt_path}")
-            # 检查 Flow Zone
-            if self.flow_zone_min <= cr <= self.flow_zone_max:
+            print(f"[Eval] 难度评估: {eval_report.get('difficulty_assessment', '—')}")
+            print(f"[Eval] 评估报告:\n{format_multi_skill_eval(eval_report)}")
+
+            # 检查 Flow Zone（以 average 技能通关率为基准）
+            if self.flow_zone_min <= avg_cr <= self.flow_zone_max:
                 flow_zone_streak += 1
                 print(f"\n[Meta] ✓ Flow Zone! (连续 {flow_zone_streak}/{self.flow_zone_streak_target})")
                 if flow_zone_streak >= self.flow_zone_streak_target:
@@ -176,8 +133,8 @@ class MetaAgent:
                     break
             else:
                 flow_zone_streak = 0
-                direction = "偏低" if cr < self.flow_zone_min else "偏高"
-                print(f"\n[Meta] ✗ 未在 Flow Zone (通关率{direction})")
+                direction = "偏低" if avg_cr < self.flow_zone_min else "偏高"
+                print(f"\n[Meta] ✗ 未在 Flow Zone (中等玩家通关率{direction})")
 
             # ─── 外环：DesignerAgent 改进关卡 ───
             print(f"\n[Designer] 正在用 LLM 改进关卡设计...")
@@ -196,7 +153,7 @@ class MetaAgent:
             )
             print(f"[Designer] 发布结果: {publish_result.get('method', '?')}")
 
-            # 通知 Drift 加载新关卡（E1）
+            # 通知 Drift 加载新关卡
             try:
                 load_url = f"{self.drift_url}/story/load/{player_id}/{new_level_id}"
                 resp = requests.post(load_url, timeout=10)
@@ -219,13 +176,10 @@ class MetaAgent:
         # 导出完整日志
         log_path = self.logger.export_json()
         summary = self.logger.get_summary()
-        summary["best_completion_rate"] = self.best_completion_rate
-        summary["best_generation"] = self.best_generation
         print(f"\n{'=' * 60}")
         print(f" 进化完成!")
         print(f" 总代数: {summary['total_generations']}")
         print(f" 最终通关率: {summary.get('final_completion_rate', 0):.0%}")
-        print(f" 最佳通关率: {self.best_completion_rate:.0%} (gen={self.best_generation})")
         print(f" 是否在 Flow Zone: {summary.get('in_flow_zone', False)}")
         print(f" 日志: {log_path}")
         print(f"{'=' * 60}")
@@ -234,69 +188,50 @@ class MetaAgent:
 
     def _run_player_episodes(self, level_id: str, player_id: str) -> list:
         """
-        运行 N 局 PlayerAgent 游玩（每局独立创建环境，具备容错能力）
+        运行 N 局 StrategyBot 游玩（多技能级别）
+
+        按 EPISODES_PER_SKILL 分配各技能级别的局数。
         """
         results = []
         consecutive_failures = 0
         max_consecutive = 3
 
-        for ep in range(self.episodes_per_eval):
-            env = None
+        # 按技能级别分配局数
+        schedule = []
+        for skill, count in EPISODES_PER_SKILL.items():
+            for _ in range(count):
+                schedule.append(skill)
+        random.shuffle(schedule)  # 打乱顺序，避免系统偏差
+
+        for ep, skill in enumerate(schedule):
+            client = None
             try:
-                env = DriftMineflayerEnv(
-                    bot_host=self.bot_host,
-                    bot_port=self.bot_port,
-                    drift_url=self.drift_url,
+                client = BotClient(host=self.bot_host, port=self.bot_port)
+                bot = StrategyBot(
+                    client=client,
+                    skill=skill,
                     level_id=level_id,
                     player_id=player_id,
                 )
-                obs, _ = env.reset()
-                episode_reward = 0.0
-                done = False
-
-                while not done:
-                    if self._policy is not None:
-                        # 使用训练好的策略
-                        obs_tensor = torch.FloatTensor(obs).unsqueeze(0)
-                        with torch.no_grad():
-                            logits, _ = self._policy(obs_tensor)
-                            flat_action = logits.argmax(dim=1).item()
-                        action = flat_to_multi(flat_action)
-                    else:
-                        # 随机策略
-                        action = env.action_space.sample()
-                    obs, reward, terminated, truncated, info = env.step(action)
-                    episode_reward += reward
-                    done = terminated or truncated
-
-                result = {
-                    "episode": ep,
-                    "completed": info.get("completed", False),
-                    "time": info.get("time", 0),
-                    "deaths": info.get("deaths", 0),
-                    "easy_used": info.get("easy_used", False),
-                    "death_causes": info.get("death_causes", []),
-                    "stuck_positions": info.get("stuck_positions", []),
-                    "exploration": info.get("exploration", 0),
-                    "total_reward": episode_reward,
-                }
+                result = bot.play_episode()
+                result["episode"] = ep
                 results.append(result)
                 consecutive_failures = 0
 
                 status = "PASS" if result["completed"] else "FAIL"
-                print(f"  Episode {ep + 1}/{self.episodes_per_eval}: {status} "
+                print(f"  Episode {ep + 1}/{len(schedule)} [{skill}]: {status} "
                       f"({result['time']:.0f}s, {result['deaths']} deaths, "
-                      f"reward={episode_reward:.1f})")
+                      f"explore={result['exploration']})")
 
             except Exception as e:
                 consecutive_failures += 1
-                print(f"  Episode {ep + 1}/{self.episodes_per_eval}: ERROR — {e}")
+                print(f"  Episode {ep + 1}/{len(schedule)} [{skill}]: ERROR — {e}")
                 if consecutive_failures >= max_consecutive:
                     print(f"[Meta] 连续 {max_consecutive} 局出错，提前终止本代评估")
                     break
 
             finally:
-                if env is not None:
-                    env.close()
+                if client is not None:
+                    client.disconnect()
 
         return results
