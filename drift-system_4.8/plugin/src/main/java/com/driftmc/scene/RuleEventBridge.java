@@ -416,6 +416,9 @@ public final class RuleEventBridge {
         if (choicePanel != null) {
             choicePanel.clear(player);
         }
+        if (worldPatcher != null) {
+            worldPatcher.cleanupDifficultyState(player);
+        }
         plugin.getLogger().log(Level.INFO,
                 "[TutorialExit] tutorial fully disabled for player {0}",
                 new Object[] { player.getName() });
