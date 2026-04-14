@@ -17,7 +17,7 @@ This worker is the FINAL step in every Drift DAG. It:
 
 Environment variables
 ---------------------
-  ASYNCAIFLOW_SERVER_BASE_URL       = http://localhost:8080
+  ASYNCAIFLOW_URL                   = http://localhost:8080
   ASYNCAIFLOW_WORKER_ID             = drift-refresh-worker-py
   ASYNCAIFLOW_CAPABILITIES          = drift_refresh
   ASYNCAIFLOW_POLL_INTERVAL_SECONDS = 2.0
@@ -173,7 +173,7 @@ def call_progress_notify(
 def run_worker() -> None:
     from asyncaiflow_client import AsyncAiFlowClient, AsyncAiFlowConfig  # type: ignore
 
-    server_url = os.getenv("ASYNCAIFLOW_SERVER_BASE_URL", "http://localhost:8080")
+    server_url = os.getenv("ASYNCAIFLOW_URL", "http://localhost:8080")
     worker_id = os.getenv("ASYNCAIFLOW_WORKER_ID", "drift-refresh-worker-py")
     capabilities = [
         cap.strip()
