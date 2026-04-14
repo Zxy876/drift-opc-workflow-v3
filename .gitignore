@@ -63,3 +63,9 @@ drift-system-clean*/backend/server/config/
 
 # Drift patches (runtime-generated)
 AsyncAIFlow_4.8/tmp/drift_patches/
+
+# Eclipse / VSCode IDE files
+.classpath
+.project
+.settings/
+.factorypath

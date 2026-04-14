@@ -102,7 +102,7 @@ services:
       - ./workers/drift_plan_worker:/app
     working_dir: /app
     environment:
-      - ASYNCAIFLOW_SERVER_BASE_URL=http://asyncaiflow:8080
+      - ASYNCAIFLOW_URL=http://asyncaiflow:8080
       - ASYNCAIFLOW_WORKER_ID=drift-plan-worker-py
       - ASYNCAIFLOW_CAPABILITIES=drift_plan
       - ASYNCAIFLOW_POLL_INTERVAL_SECONDS=1.0
@@ -157,7 +157,7 @@ services:
       - ./workers/drift_test_worker:/app
     working_dir: /app
     environment:
-      - ASYNCAIFLOW_SERVER_BASE_URL=http://asyncaiflow:8080
+      - ASYNCAIFLOW_URL=http://asyncaiflow:8080
       - ASYNCAIFLOW_WORKER_ID=drift-test-worker-py
       - ASYNCAIFLOW_CAPABILITIES=drift_test
       - ASYNCAIFLOW_POLL_INTERVAL_SECONDS=1.0
@@ -194,10 +194,31 @@ services:
       - ./workers/drift_git_push_worker:/app
     working_dir: /app
     environment:
-      - ASYNCAIFLOW_SERVER_BASE_URL=http://asyncaiflow:8080
+      - ASYNCAIFLOW_URL=http://asyncaiflow:8080
       - ASYNCAIFLOW_WORKER_ID=drift-git-push-worker-py
       - ASYNCAIFLOW_CAPABILITIES=drift_git_push
       - ASYNCAIFLOW_POLL_INTERVAL_SECONDS=1.0
+    command: >
+      bash -c "pip install -q requests && python worker.py"
+
+  # ── drift_experience_worker ───────────────────────────────
+  drift-experience-worker:
+    image: python:3.11-slim
+    restart: always
+    depends_on:
+      asyncaiflow:
+        condition: service_healthy
+      drift-backend:
+        condition: service_healthy
+    volumes:
+      - ./workers/drift_experience_worker:/app
+    working_dir: /app
+    environment:
+      - ASYNCAIFLOW_URL=http://asyncaiflow:8080
+      - DRIFT_EXPERIENCE_WORKER_ID=drift-experience-worker-1
+      - ASYNCAIFLOW_CAPABILITIES=drift_experience
+      - ASYNCAIFLOW_POLL_INTERVAL_SECONDS=1.0
+      - DRIFT_URL=http://drift-backend:8000
     command: >
       bash -c "pip install -q requests && python worker.py"
 
@@ -218,7 +239,7 @@ services:
       - ASYNCAIFLOW_WORKER_ID=drift-refresh-worker-py
       - ASYNCAIFLOW_CAPABILITIES=drift_refresh
       - ASYNCAIFLOW_POLL_INTERVAL_SECONDS=2.0
-      - DRIFT_BACKEND_URL=http://drift-backend:8000
+      - DRIFT_URL=http://drift-backend:8000
     command: >
       bash -c "pip install -q requests && python worker.py"
 
