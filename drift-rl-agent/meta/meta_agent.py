@@ -47,6 +47,10 @@ class MetaAgent:
         self.logger = EvolutionLog()
         self.model_path = model_path
         self._policy = None
+        self.checkpoint_dir = os.path.join(os.path.dirname(__file__), "..", "checkpoints")
+        os.makedirs(self.checkpoint_dir, exist_ok=True)
+        self.best_completion_rate = 0.0
+        self.best_generation = -1
 
         # 加载配置
         self._load_config(config_path)
@@ -89,7 +93,12 @@ class MetaAgent:
             device = torch.device("cpu")
             net = Net(state_shape=(64,), hidden_sizes=[256, 256], device=device)
             actor = Actor(net, action_shape=504, device=device).to(device)
-            state_dict = torch.load(model_path, map_location=device)
+            checkpoint = torch.load(model_path, map_location=device)
+            # C1: 支持 actor-only 格式和完整检查点格式
+            if isinstance(checkpoint, dict) and "actor" in checkpoint:
+                state_dict = checkpoint["actor"]
+            else:
+                state_dict = checkpoint
             # Q1: 优先 strict=True，失败则过滤并降级
             try:
                 actor.load_state_dict(state_dict, strict=True)
@@ -150,7 +159,13 @@ class MetaAgent:
             print(f"[Eval] 平均死亡: {eval_report['avg_deaths']:.1f}")
             print(f"[Eval] /easy 使用率: {eval_report['easy_usage_rate']:.0%}")
             print(f"[Eval] 评估报告:\n{format_eval_for_llm(eval_report)}")
-
+            # F2: 保存最佳检查点
+            if self._policy is not None and cr > self.best_completion_rate:
+                self.best_completion_rate = cr
+                self.best_generation = gen
+                ckpt_path = os.path.join(self.checkpoint_dir, f"best_{level_id}.pth")
+                torch.save(self._policy.state_dict(), ckpt_path)
+                print(f"[Meta] 最佳模型已保存 (gen={gen}, cr={cr:.0%}): {ckpt_path}")
             # 检查 Flow Zone
             if self.flow_zone_min <= cr <= self.flow_zone_max:
                 flow_zone_streak += 1
@@ -204,10 +219,13 @@ class MetaAgent:
         # 导出完整日志
         log_path = self.logger.export_json()
         summary = self.logger.get_summary()
+        summary["best_completion_rate"] = self.best_completion_rate
+        summary["best_generation"] = self.best_generation
         print(f"\n{'=' * 60}")
         print(f" 进化完成!")
         print(f" 总代数: {summary['total_generations']}")
         print(f" 最终通关率: {summary.get('final_completion_rate', 0):.0%}")
+        print(f" 最佳通关率: {self.best_completion_rate:.0%} (gen={self.best_generation})")
         print(f" 是否在 Flow Zone: {summary.get('in_flow_zone', False)}")
         print(f" 日志: {log_path}")
         print(f"{'=' * 60}")
@@ -216,57 +234,69 @@ class MetaAgent:
 
     def _run_player_episodes(self, level_id: str, player_id: str) -> list:
         """
-        运行 N 局 PlayerAgent 游玩
-
-        简化版：直接用 DriftMineflayerEnv（随机策略）
-        完整版：加载训练好的 PPO 模型后替换 action = policy(obs)
+        运行 N 局 PlayerAgent 游玩（每局独立创建环境，具备容错能力）
         """
-        env = DriftMineflayerEnv(
-            bot_host=self.bot_host,
-            bot_port=self.bot_port,
-            drift_url=self.drift_url,
-            level_id=level_id,
-            player_id=player_id,
-        )
-
         results = []
+        consecutive_failures = 0
+        max_consecutive = 3
+
         for ep in range(self.episodes_per_eval):
-            obs, _ = env.reset()
-            episode_reward = 0.0
-            done = False
+            env = None
+            try:
+                env = DriftMineflayerEnv(
+                    bot_host=self.bot_host,
+                    bot_port=self.bot_port,
+                    drift_url=self.drift_url,
+                    level_id=level_id,
+                    player_id=player_id,
+                )
+                obs, _ = env.reset()
+                episode_reward = 0.0
+                done = False
 
-            while not done:
-                if self._policy is not None:
-                    # 使用训练好的策略
-                    obs_tensor = torch.FloatTensor(obs).unsqueeze(0)
-                    with torch.no_grad():
-                        logits, _ = self._policy(obs_tensor)
-                        flat_action = logits.argmax(dim=1).item()
-                    action = flat_to_multi(flat_action)
-                else:
-                    # 随机策略
-                    action = env.action_space.sample()
-                obs, reward, terminated, truncated, info = env.step(action)
-                episode_reward += reward
-                done = terminated or truncated
+                while not done:
+                    if self._policy is not None:
+                        # 使用训练好的策略
+                        obs_tensor = torch.FloatTensor(obs).unsqueeze(0)
+                        with torch.no_grad():
+                            logits, _ = self._policy(obs_tensor)
+                            flat_action = logits.argmax(dim=1).item()
+                        action = flat_to_multi(flat_action)
+                    else:
+                        # 随机策略
+                        action = env.action_space.sample()
+                    obs, reward, terminated, truncated, info = env.step(action)
+                    episode_reward += reward
+                    done = terminated or truncated
 
-            result = {
-                "episode": ep,
-                "completed": info.get("completed", False),
-                "time": info.get("time", 0),
-                "deaths": info.get("deaths", 0),
-                "easy_used": info.get("easy_used", False),
-                "death_causes": info.get("death_causes", []),
-                "stuck_positions": info.get("stuck_positions", []),
-                "exploration": info.get("exploration", 0),
-                "total_reward": episode_reward,
-            }
-            results.append(result)
+                result = {
+                    "episode": ep,
+                    "completed": info.get("completed", False),
+                    "time": info.get("time", 0),
+                    "deaths": info.get("deaths", 0),
+                    "easy_used": info.get("easy_used", False),
+                    "death_causes": info.get("death_causes", []),
+                    "stuck_positions": info.get("stuck_positions", []),
+                    "exploration": info.get("exploration", 0),
+                    "total_reward": episode_reward,
+                }
+                results.append(result)
+                consecutive_failures = 0
 
-            status = "PASS" if result["completed"] else "FAIL"
-            print(f"  Episode {ep + 1}/{self.episodes_per_eval}: {status} "
-                  f"({result['time']:.0f}s, {result['deaths']} deaths, "
-                  f"reward={episode_reward:.1f})")
+                status = "PASS" if result["completed"] else "FAIL"
+                print(f"  Episode {ep + 1}/{self.episodes_per_eval}: {status} "
+                      f"({result['time']:.0f}s, {result['deaths']} deaths, "
+                      f"reward={episode_reward:.1f})")
 
-        env.close()
+            except Exception as e:
+                consecutive_failures += 1
+                print(f"  Episode {ep + 1}/{self.episodes_per_eval}: ERROR — {e}")
+                if consecutive_failures >= max_consecutive:
+                    print(f"[Meta] 连续 {max_consecutive} 局出错，提前终止本代评估")
+                    break
+
+            finally:
+                if env is not None:
+                    env.close()
+
         return results

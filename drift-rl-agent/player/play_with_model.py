@@ -33,7 +33,12 @@ def play(args):
     # 加载模型
     net = Net(state_shape=(64,), hidden_sizes=[256, 256], device=device)
     actor = Actor(net, action_shape=504, device=device).to(device)
-    state_dict = torch.load(args.model, map_location=device)
+    checkpoint = torch.load(args.model, map_location=device)
+    # C1: 支持 actor-only 格式和完整检查点格式
+    if isinstance(checkpoint, dict) and "actor" in checkpoint:
+        state_dict = checkpoint["actor"]
+    else:
+        state_dict = checkpoint
     # Q1: 优先尝试 strict=True，如果失败则过滤不匹配的键并降级
     try:
         actor.load_state_dict(state_dict, strict=True)

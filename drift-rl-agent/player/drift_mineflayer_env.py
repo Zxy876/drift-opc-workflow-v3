@@ -329,5 +329,8 @@ class DriftMineflayerEnv(gym.Env):
         return obs, reward, terminated, truncated, info
 
     def close(self):
-        self._send({"type": "stop_all"})
+        try:
+            self._send({"type": "stop_all"})
+        except Exception:
+            pass
         self._disconnect()

@@ -37,6 +37,7 @@ except ImportError as e:
     )
 
 from drift_mineflayer_env import DriftMineflayerEnv
+from action_utils import flat_to_multi
 
 
 class FlatActionWrapper(gym.ActionWrapper):
@@ -52,12 +53,7 @@ class FlatActionWrapper(gym.ActionWrapper):
 
     def action(self, act):
         """Discrete(504) → MultiDiscrete([3,3,2,2,2,7])"""
-        result = []
-        remaining = int(act)
-        for n in reversed(self.orig_nvec):
-            result.append(remaining % n)
-            remaining //= n
-        return np.array(list(reversed(result)), dtype=np.int64)
+        return flat_to_multi(int(act))
 
 
 def load_training_config(config_path: Optional[str] = None) -> dict:
@@ -198,9 +194,16 @@ def train(args):
     # 保存模型
     save_dir = os.path.join(os.path.dirname(__file__), "..", "checkpoints")
     os.makedirs(save_dir, exist_ok=True)
-    save_path = os.path.join(save_dir, f"player_ppo_{args.level}.pth")
-    torch.save(policy.state_dict(), save_path)
-    print(f"[Train] 模型已保存: {save_path}")
+    actor_path = os.path.join(save_dir, f"player_actor_{args.level}.pth")
+    checkpoint_path = os.path.join(save_dir, f"player_policy_{args.level}.pth")
+    torch.save(policy.actor.state_dict(), actor_path)
+    torch.save({
+        "actor": policy.actor.state_dict(),
+        "critic": policy.critic.state_dict(),
+        "optim": policy.optim.state_dict(),
+    }, checkpoint_path)
+    print(f"[Train] Actor 已保存: {actor_path}")
+    print(f"[Train] 完整检查点已保存: {checkpoint_path}")
 
     return result
 
