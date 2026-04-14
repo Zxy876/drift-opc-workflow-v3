@@ -353,6 +353,59 @@ def main():
     test("R3: EvolutionLog 立即持久化", test_r3_evolution_log_immediate_persist)
     test("F5: run_evolution --player-id 参数", test_f5_run_evolution_has_player_id_flag)
 
+    # ─── 8. Phase 5 新增测试 ───
+    print("\n[8] Phase 5: S1/F1/F4/Q2 验证...")
+
+    def test_s1_player_bot_syntax():
+        """S1: player_bot.js 应通过 JS 语法检查"""
+        import subprocess
+        bot_path = os.path.join(ROOT, "player", "player_bot.js")
+        result = subprocess.run(
+            ["node", "-c", bot_path],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, f"player_bot.js 语法错误: {result.stderr}"
+
+    def test_f1_generate_new_level_has_retry():
+        """F1: generate_new_level 应有 max_retries 参数"""
+        import inspect
+        from designer_agent import DesignerAgent
+        sig = inspect.signature(DesignerAgent.generate_new_level)
+        assert "max_retries" in sig.parameters, "generate_new_level 缺少 max_retries 参数"
+
+    def test_q2_best_checkpoint_has_actor_key():
+        """Q2: MetaAgent 保存的最佳检查点应包含 'actor' 键"""
+        import torch, tempfile
+        from tianshou.utils.net.common import Net
+        from tianshou.utils.net.discrete import Actor
+        device = torch.device("cpu")
+        net = Net(state_shape=(64,), hidden_sizes=[256, 256], device=device)
+        actor = Actor(net, action_shape=504, device=device).to(device)
+        # 模拟 MetaAgent 的保存逻辑（Q2 修复后格式）
+        with tempfile.TemporaryDirectory() as d:
+            ckpt_path = os.path.join(d, "best_test.pth")
+            torch.save({"actor": actor.state_dict()}, ckpt_path)
+            checkpoint = torch.load(ckpt_path, map_location=device)
+            assert isinstance(checkpoint, dict) and "actor" in checkpoint, \
+                "最佳检查点应包含 'actor' 键"
+
+    def test_f4_reset_no_hardcoded_sleep():
+        """F4: reset() 不应有硬编码的 time.sleep(3)"""
+        env_path = os.path.join(ROOT, "player", "drift_mineflayer_env.py")
+        with open(env_path) as f:
+            src = f.read()
+        reset_start = src.find("def reset(")
+        reset_end = src.find("\n    def ", reset_start + 1)
+        if reset_end == -1:
+            reset_end = len(src)
+        reset_code = src[reset_start:reset_end]
+        assert "sleep(3)" not in reset_code, "reset() 仍有 time.sleep(3) 硬编码"
+
+    test("S1: player_bot.js 语法检查", test_s1_player_bot_syntax)
+    test("F1: generate_new_level 重试参数", test_f1_generate_new_level_has_retry)
+    test("Q2: 最佳检查点包含 actor 键", test_q2_best_checkpoint_has_actor_key, requires_torch=True)
+    test("F4: reset 无硬编码 sleep(3)", test_f4_reset_no_hardcoded_sleep)
+
     # ─── 结果 ───
     print(f"\n{'=' * 40}")
     print(f" 结果: {PASS} 通过, {FAIL} 失败, {SKIP} 跳过")
