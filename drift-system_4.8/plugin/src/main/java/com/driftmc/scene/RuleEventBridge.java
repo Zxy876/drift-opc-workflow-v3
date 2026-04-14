@@ -668,8 +668,8 @@ public final class RuleEventBridge {
             @Override
             public void onFailure(Call call, IOException e) {
                 plugin.getLogger().warning("[AutoAdvance] 请求失败: " + e.getMessage());
-                advancingPlayers.remove(playerId);
                 Bukkit.getScheduler().runTask(plugin, () -> {
+                    advancingPlayers.remove(playerId);
                     Player p = Bukkit.getPlayer(playerId);
                     if (p != null && p.isOnline()) {
                         p.sendMessage(ChatColor.YELLOW + "⚠ 自动跳关失败，请手动输入 /advance 前往下一关。");
@@ -680,118 +680,123 @@ public final class RuleEventBridge {
             @Override
             public void onResponse(Call call, Response resp) throws IOException {
                 try (resp) {
-                    final String body = resp.body() != null ? resp.body().string() : "{}";
-                    plugin.getLogger().info("[AutoAdvance] 响应: " + body.substring(0, Math.min(300, body.length())));
-
-                    if (!resp.isSuccessful()) {
-                        plugin.getLogger().warning("[AutoAdvance] HTTP " + resp.code());
-                        advancingPlayers.remove(playerId);
-                        Bukkit.getScheduler().runTask(plugin, () -> {
-                            Player p = Bukkit.getPlayer(playerId);
-                            if (p != null && p.isOnline()) {
-                                p.sendMessage(ChatColor.YELLOW + "⚠ 自动跳关失败，请手动输入 /advance 前往下一关。");
-                            }
-                        });
-                        return;
-                    }
-
-                    JsonObject root;
                     try {
-                        root = JsonParser.parseString(body).getAsJsonObject();
-                    } catch (Exception ex) {
-                        plugin.getLogger().warning("[AutoAdvance] JSON 解析失败: " + ex.getMessage());
-                        advancingPlayers.remove(playerId);
+                        final String body = resp.body() != null ? resp.body().string() : "{}";
+                        plugin.getLogger().info("[AutoAdvance] 响应: " + body.substring(0, Math.min(300, body.length())));
+
+                        if (!resp.isSuccessful()) {
+                            plugin.getLogger().warning("[AutoAdvance] HTTP " + resp.code());
+                            Bukkit.getScheduler().runTask(plugin, () -> {
+                                advancingPlayers.remove(playerId);
+                                Player p = Bukkit.getPlayer(playerId);
+                                if (p != null && p.isOnline()) {
+                                    p.sendMessage(ChatColor.YELLOW + "⚠ 自动跳关失败，请手动输入 /advance 前往下一关。");
+                                }
+                            });
+                            return;
+                        }
+
+                        JsonObject root;
+                        try {
+                            root = JsonParser.parseString(body).getAsJsonObject();
+                        } catch (Exception ex) {
+                            plugin.getLogger().warning("[AutoAdvance] JSON 解析失败: " + ex.getMessage());
+                            Bukkit.getScheduler().runTask(plugin, () -> {
+                                advancingPlayers.remove(playerId);
+                                Player p = Bukkit.getPlayer(playerId);
+                                if (p != null && p.isOnline()) {
+                                    p.sendMessage(ChatColor.YELLOW + "⚠ 自动跳关失败，请手动输入 /advance 前往下一关。");
+                                }
+                            });
+                            return;
+                        }
+
+                        final String status = root.has("status") ? root.get("status").getAsString() : "ok";
+                        final String action = root.has("action") ? root.get("action").getAsString() : "prompt";
+                        final String message = root.has("message") ? root.get("message").getAsString() : "";
+                        final int difficulty = root.has("current_difficulty") ? root.get("current_difficulty").getAsInt() : 1;
+                        final String nextLevelId = root.has("next_level_id") && !root.get("next_level_id").isJsonNull()
+                                ? root.get("next_level_id").getAsString() : null;
+                        final JsonObject bootstrapPatch = root.has("bootstrap_patch")
+                                && root.get("bootstrap_patch").isJsonObject()
+                                        ? root.getAsJsonObject("bootstrap_patch")
+                                        : null;
+
                         Bukkit.getScheduler().runTask(plugin, () -> {
+                            advancingPlayers.remove(playerId);
                             Player p = Bukkit.getPlayer(playerId);
-                            if (p != null && p.isOnline()) {
-                                p.sendMessage(ChatColor.YELLOW + "⚠ 自动跳关失败，请手动输入 /advance 前往下一关。");
+                            if (p == null || !p.isOnline()) {
+                                return;
+                            }
+
+                            if ("error".equals(status)) {
+                                p.sendMessage(ChatColor.YELLOW + "⚠ " + message);
+                                p.sendMessage(ChatColor.GRAY + "输入 " + ChatColor.WHITE + "/advance"
+                                        + ChatColor.GRAY + " 手动前往下一关");
+                                plugin.getLogger().warning("[AutoAdvance] 后端返回错误: " + message);
+                                return;
+                            }
+
+                            switch (action) {
+                                case "auto":
+                                    // D1-D3: 直接跳转，应用 bootstrap_patch
+                                    p.sendMessage(ChatColor.GREEN + "" + ChatColor.BOLD + "✨ " + message);
+                                    if (bootstrapPatch != null && bootstrapPatch.size() > 0) {
+                                        Map<String, Object> patch = gson.fromJson(bootstrapPatch, MAP_TYPE);
+                                        if (patch != null && !patch.isEmpty()) {
+                                            worldPatcher.execute(p, patch);
+                                        }
+                                    }
+                                    if (questLogHud != null) {
+                                        questLogHud.showQuestLog(p, QuestLogHud.Trigger.LEVEL_ENTER);
+                                    }
+                                    plugin.getLogger().info("[AutoAdvance] D" + difficulty
+                                            + " 自动跳转到 " + nextLevelId + " for " + playerName);
+                                    break;
+
+                                case "prompt":
+                                    // D4: 给玩家选择
+                                    p.sendMessage(ChatColor.GOLD + "" + ChatColor.BOLD + "🏆 " + message);
+                                    p.sendMessage(ChatColor.GRAY + "输入 " + ChatColor.WHITE + "/advance"
+                                            + ChatColor.GRAY + " 继续下一关");
+                                    p.sendMessage(ChatColor.GRAY + "输入 " + ChatColor.WHITE + "/replay"
+                                            + ChatColor.GRAY + " 重玩本关");
+                                    plugin.getLogger().info("[AutoAdvance] D" + difficulty
+                                            + " 提示选择 for " + playerName);
+                                    break;
+
+                                case "warn":
+                                    // D5: 高难度祝贺
+                                    p.sendMessage(ChatColor.LIGHT_PURPLE + "" + ChatColor.BOLD + "🌟 " + message);
+                                    p.sendMessage(ChatColor.GRAY + "输入 " + ChatColor.WHITE + "/advance"
+                                            + ChatColor.GRAY + " 挑战更高难度");
+                                    p.sendMessage(ChatColor.GRAY + "输入 " + ChatColor.WHITE + "/easy"
+                                            + ChatColor.GRAY + " 降低难度");
+                                    plugin.getLogger().info("[AutoAdvance] D" + difficulty
+                                            + " 高难度警告 for " + playerName);
+                                    break;
+
+                                case "end":
+                                    // 最后一关
+                                    p.sendMessage(ChatColor.GOLD + "" + ChatColor.BOLD + "🎉 " + message);
+                                    plugin.getLogger().info("[AutoAdvance] 通关！ for " + playerName);
+                                    break;
+
+                                default:
+                                    p.sendMessage(ChatColor.YELLOW + message);
+                                    break;
                             }
                         });
-                        return;
+                    } catch (Exception ex) {
+                        plugin.getLogger().warning("[AutoAdvance] Unexpected error: " + ex.getMessage());
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            advancingPlayers.remove(playerId);
+                            Player p = Bukkit.getPlayer(playerId);
+                            if (p != null && p.isOnline()) {
+                                p.sendMessage(ChatColor.YELLOW + "⚠ 自动跳关处理异常，请手动输入 /advance 前往下一关。");
+                            }
+                        });
                     }
-
-                    final String status = root.has("status") ? root.get("status").getAsString() : "ok";
-                    final String action = root.has("action") ? root.get("action").getAsString() : "prompt";
-                    final String message = root.has("message") ? root.get("message").getAsString() : "";
-                    final int difficulty = root.has("current_difficulty") ? root.get("current_difficulty").getAsInt() : 1;
-                    final String nextLevelId = root.has("next_level_id") && !root.get("next_level_id").isJsonNull()
-                            ? root.get("next_level_id").getAsString() : null;
-                    final JsonObject bootstrapPatch = root.has("bootstrap_patch")
-                            && root.get("bootstrap_patch").isJsonObject()
-                                    ? root.getAsJsonObject("bootstrap_patch")
-                                    : null;
-
-                    Bukkit.getScheduler().runTask(plugin, () -> {
-                        Player p = Bukkit.getPlayer(playerId);
-                        if (p == null || !p.isOnline()) {
-                            advancingPlayers.remove(playerId);
-                            return;
-                        }
-
-                        if ("error".equals(status)) {
-                            advancingPlayers.remove(playerId);
-                            p.sendMessage(ChatColor.YELLOW + "⚠ " + message);
-                            p.sendMessage(ChatColor.GRAY + "输入 " + ChatColor.WHITE + "/advance"
-                                    + ChatColor.GRAY + " 手动前往下一关");
-                            plugin.getLogger().warning("[AutoAdvance] 后端返回错误: " + message);
-                            return;
-                        }
-
-                        switch (action) {
-                            case "auto":
-                                // D1-D3: 直接跳转，应用 bootstrap_patch
-                                advancingPlayers.remove(playerId);
-                                p.sendMessage(ChatColor.GREEN + "" + ChatColor.BOLD + "✨ " + message);
-                                if (bootstrapPatch != null && bootstrapPatch.size() > 0) {
-                                    Map<String, Object> patch = gson.fromJson(bootstrapPatch, MAP_TYPE);
-                                    if (patch != null && !patch.isEmpty()) {
-                                        worldPatcher.execute(p, patch);
-                                    }
-                                }
-                                if (questLogHud != null) {
-                                    questLogHud.showQuestLog(p, QuestLogHud.Trigger.LEVEL_ENTER);
-                                }
-                                plugin.getLogger().info("[AutoAdvance] D" + difficulty
-                                        + " 自动跳转到 " + nextLevelId + " for " + playerName);
-                                break;
-
-                            case "prompt":
-                                // D4: 给玩家选择
-                                advancingPlayers.remove(playerId);
-                                p.sendMessage(ChatColor.GOLD + "" + ChatColor.BOLD + "🏆 " + message);
-                                p.sendMessage(ChatColor.GRAY + "输入 " + ChatColor.WHITE + "/advance"
-                                        + ChatColor.GRAY + " 继续下一关");
-                                p.sendMessage(ChatColor.GRAY + "输入 " + ChatColor.WHITE + "/replay"
-                                        + ChatColor.GRAY + " 重玩本关");
-                                plugin.getLogger().info("[AutoAdvance] D" + difficulty
-                                        + " 提示选择 for " + playerName);
-                                break;
-
-                            case "warn":
-                                // D5: 高难度祝贺
-                                advancingPlayers.remove(playerId);
-                                p.sendMessage(ChatColor.LIGHT_PURPLE + "" + ChatColor.BOLD + "🌟 " + message);
-                                p.sendMessage(ChatColor.GRAY + "输入 " + ChatColor.WHITE + "/advance"
-                                        + ChatColor.GRAY + " 挑战更高难度");
-                                p.sendMessage(ChatColor.GRAY + "输入 " + ChatColor.WHITE + "/easy"
-                                        + ChatColor.GRAY + " 降低难度");
-                                plugin.getLogger().info("[AutoAdvance] D" + difficulty
-                                        + " 高难度警告 for " + playerName);
-                                break;
-
-                            case "end":
-                                // 最后一关
-                                advancingPlayers.remove(playerId);
-                                p.sendMessage(ChatColor.GOLD + "" + ChatColor.BOLD + "🎉 " + message);
-                                plugin.getLogger().info("[AutoAdvance] 通关！ for " + playerName);
-                                break;
-
-                            default:
-                                advancingPlayers.remove(playerId);
-                                p.sendMessage(ChatColor.YELLOW + message);
-                                break;
-                        }
-                    });
                 }
             }
         });
