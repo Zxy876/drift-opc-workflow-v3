@@ -101,6 +101,27 @@ public class BackendClient {
     }
 
     // ------------------------------------------------------
+    // 同步 getJson
+    // ------------------------------------------------------
+    public String getJson(String path) throws IOException {
+        if (Bukkit.getServer() != null && Bukkit.isPrimaryThread()) {
+            throw new IllegalStateException("BackendClient.getJson cannot run on the primary server thread");
+        }
+        Request request = new Request.Builder()
+                .url(buildUrl(path))
+                .get()
+                .build();
+
+        try (Response resp = client.newCall(request).execute()) {
+            if (!resp.isSuccessful()) {
+                throw new IOException("GET " + path + " failed: " + resp.code());
+            }
+            ResponseBody rb = resp.body();
+            return rb != null ? rb.string() : "";
+        }
+    }
+
+    // ------------------------------------------------------
     // 异步 GET 请求（用于获取小地图等资源）
     // ------------------------------------------------------
     public void getAsync(String path, Callback callback) {

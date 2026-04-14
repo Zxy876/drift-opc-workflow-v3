@@ -74,13 +74,13 @@ public class EasyCommand implements CommandExecutor {
                     return;
                 }
 
-                // 2. 获取当前难度
+                // 2. 获取当前难度（只读端点，无副作用）
                 int currentDifficulty = 1;
                 try {
-                    String advResp = backend.postJson("/story/auto-advance/" + playerId, "{}");
-                    JsonObject advRoot = JsonParser.parseString(advResp).getAsJsonObject();
-                    if (advRoot.has("current_difficulty")) {
-                        currentDifficulty = advRoot.get("current_difficulty").getAsInt();
+                    String diffResp = backend.getJson("/story/difficulty/" + playerId);
+                    JsonObject diffRoot = JsonParser.parseString(diffResp).getAsJsonObject();
+                    if (diffRoot.has("current_difficulty")) {
+                        currentDifficulty = diffRoot.get("current_difficulty").getAsInt();
                     }
                 } catch (Exception ignored) {
                     // fallback to D1
