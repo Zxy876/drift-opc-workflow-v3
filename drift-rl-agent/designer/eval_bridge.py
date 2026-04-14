@@ -1,0 +1,83 @@
+"""
+评估桥接层 — 将 PlayerAgent 的游玩数据转换为 DesignerAgent 的评估报告
+"""
+
+from typing import Any
+
+
+def analyze_play_data(play_results: list) -> dict:
+    """
+    分析 PlayerAgent 的游玩数据，产出评估报告
+
+    Args:
+        play_results: 每局的结果列表
+            [{"completed": bool, "time": float, "deaths": int, "easy_used": bool,
+              "death_causes": list, "stuck_positions": list, "exploration": int}, ...]
+
+    Returns:
+        评估报告 dict
+    """
+    if not play_results:
+        return {
+            "completion_rate": 0.0,
+            "avg_time": 0.0,
+            "avg_deaths": 0.0,
+            "easy_usage_rate": 0.0,
+            "death_causes": {},
+            "stuck_points": {},
+            "total_episodes": 0,
+            "avg_exploration": 0.0,
+        }
+
+    total = len(play_results)
+    completed = sum(1 for r in play_results if r.get("completed", False))
+
+    # 聚合死因
+    death_causes: dict = {}
+    for r in play_results:
+        for cause in r.get("death_causes", []):
+            death_causes[cause] = death_causes.get(cause, 0) + 1
+    death_causes = dict(sorted(death_causes.items(), key=lambda x: -x[1])[:5])
+
+    # 聚合卡点
+    stuck_points: dict = {}
+    for r in play_results:
+        for point in r.get("stuck_positions", []):
+            if isinstance(point, (list, tuple)) and len(point) >= 3:
+                key = f"({point[0]:.0f},{point[1]:.0f},{point[2]:.0f})"
+            else:
+                key = str(point)
+            stuck_points[key] = stuck_points.get(key, 0) + 1
+    stuck_points = dict(sorted(stuck_points.items(), key=lambda x: -x[1])[:3])
+
+    return {
+        "completion_rate": completed / total,
+        "avg_time": sum(r.get("time", 0) for r in play_results) / total,
+        "avg_deaths": sum(r.get("deaths", 0) for r in play_results) / total,
+        "easy_usage_rate": sum(1 for r in play_results if r.get("easy_used", False)) / total,
+        "death_causes": death_causes,
+        "stuck_points": stuck_points,
+        "total_episodes": total,
+        "avg_exploration": sum(r.get("exploration", 0) for r in play_results) / total,
+    }
+
+
+def format_eval_for_llm(eval_report: dict) -> str:
+    """将评估报告格式化为 LLM 友好的文本"""
+    lines = [
+        f"通关率: {eval_report['completion_rate']:.0%} ({eval_report['total_episodes']} 局)",
+        f"平均完成时间: {eval_report['avg_time']:.0f}s",
+        f"平均死亡次数: {eval_report['avg_deaths']:.1f}",
+        f"/easy 使用率: {eval_report['easy_usage_rate']:.0%}",
+        f"平均探索度: {eval_report['avg_exploration']:.0f} 格",
+    ]
+
+    if eval_report["death_causes"]:
+        causes = ", ".join(f"{k}({v}次)" for k, v in eval_report["death_causes"].items())
+        lines.append(f"主要死因: {causes}")
+
+    if eval_report["stuck_points"]:
+        points = ", ".join(f"{k}({v}次)" for k, v in eval_report["stuck_points"].items())
+        lines.append(f"卡点位置: {points}")
+
+    return "\n".join(lines)

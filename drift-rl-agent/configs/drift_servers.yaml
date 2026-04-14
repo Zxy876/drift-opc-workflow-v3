@@ -1,0 +1,19 @@
+# Drift 系统服务器地址配置
+drift:
+  backend_url: "http://35.201.132.58:8000"
+  asyncaiflow_url: "http://35.201.132.58:8080"
+  mc_server:
+    host: "35.201.132.58"
+    port: 25565
+  panel_url: "http://35.201.132.58:8888/drift-experience-panel.html"
+
+# Mineflayer Bot 配置
+bot:
+  username: "DriftRLAgent"
+  bridge_port: 9999      # TCP Bridge 端口（Python ↔ Node.js）
+  viewer_port: 3007      # prismarine-viewer 端口
+
+# LLM 配置
+llm:
+  model: "gpt-4"
+  # API key 从环境变量 OPENAI_API_KEY 读取

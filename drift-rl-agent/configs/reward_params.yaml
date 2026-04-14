@@ -1,0 +1,30 @@
+# 奖励函数参数（可调）
+rewards:
+  # 基础
+  alive_per_tick: 0.01          # 每 tick 存活奖励
+  time_penalty_per_tick: -0.001  # 时间惩罚（防徘徊）
+
+  # 进度
+  trigger_completed: 2.0         # 每完成一个触发器
+  new_area_discovered: 0.5       # 探索新区域
+  npc_interacted: 1.0            # 与 NPC 交互
+
+  # 结局
+  level_completed: 10.0          # 通关大奖
+  time_bonus_max: 5.0            # 快速通关额外奖励上限
+  death_penalty: -5.0            # 死亡惩罚
+
+  # 健康
+  health_change_scale: 0.1       # 血量变化缩放
+  low_health_threshold: 5        # 低血量阈值
+  low_health_penalty: -0.1       # 低血量持续惩罚
+
+  # 命令
+  easy_command_penalty: -0.5     # 使用 /easy 的惩罚（鼓励挑战）
+
+# 环境参数
+environment:
+  max_steps: 6000                # 每局最大 tick 数（约 5 分钟）
+  position_grid_size: 5          # 探索网格大小（合并相近坐标）
+  max_nearby_entities: 10        # 状态中记录的最大附近实体数
+  observation_dim: 64            # 拉平后的观测向量维度

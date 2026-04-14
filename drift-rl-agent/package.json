@@ -1,0 +1,16 @@
+{
+  "name": "drift-rl-agent",
+  "version": "1.0.0",
+  "description": "Drift RL Agent - Mineflayer Bot with TCP Bridge for Python RL training",
+  "scripts": {
+    "bot": "node player/player_bot.js",
+    "viewer": "node viewer/viewer_server.js"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0",
+    "mineflayer": "^4.20.0",
+    "mineflayer-pathfinder": "^2.4.0",
+    "prismarine-viewer": "^1.28.0",
+    "vec3": "^0.1.10"
+  }
+}

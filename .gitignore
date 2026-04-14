@@ -69,3 +69,9 @@ AsyncAIFlow_4.8/tmp/drift_patches/
 .project
 .settings/
 .factorypath
+
+# RL Agent
+drift-rl-agent/node_modules/
+drift-rl-agent/checkpoints/
+drift-rl-agent/evolution_logs/
+drift-rl-agent/*.pth

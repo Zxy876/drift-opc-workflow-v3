@@ -1,0 +1,34 @@
+# MetaAgent 进化参数
+evolution:
+  episodes_per_eval: 20           # 每代评估游玩局数
+  max_generations: 10             # 最大进化代数
+  flow_zone_min: 0.6              # Flow Zone 下界（通关率）
+  flow_zone_max: 0.8              # Flow Zone 上界
+  flow_zone_streak_target: 3      # 连续 N 代在 Flow Zone 才停止
+
+# DesignerAgent 参数
+designer:
+  use_premium_threshold: 3        # difficulty >= 此值时用 Premium Publish
+  workflow_poll_interval: 5       # 工作流轮询间隔（秒）
+  workflow_timeout: 300           # 工作流超时（秒）
+
+# PlayerAgent 训练参数
+player_training:
+  algorithm: "PPO"
+  lr: 3.0e-4
+  gamma: 0.99
+  gae_lambda: 0.95
+  eps_clip: 0.2
+  vf_coef: 0.5
+  ent_coef: 0.01
+  max_grad_norm: 0.5
+  repeat_per_collect: 10
+  batch_size: 256
+  hidden_sizes: [256, 256]
+  buffer_size: 20000
+  max_epoch: 100
+  step_per_epoch: 5000
+  step_per_collect: 2000
+  episode_per_test: 10
+  num_train_envs: 4
+  num_test_envs: 2

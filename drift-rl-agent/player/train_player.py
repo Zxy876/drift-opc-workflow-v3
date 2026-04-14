@@ -1,0 +1,183 @@
+"""
+Drift PlayerAgent 训练脚本
+
+使用 Tianshou PPO 在 DriftMineflayerEnv 上训练 RL 策略。
+
+用法：
+  python player/train_player.py --level demo_rl_001 --epochs 100
+
+前提：
+  1. node player/player_bot.js 已在运行
+  2. MC 服务器已启动且可连接
+"""
+
+import argparse
+import os
+from typing import Optional
+
+import numpy as np
+import yaml
+import torch
+from torch.optim import Adam
+
+# ─── Tianshou 导入（兼容 v0.5 / v1.x）────────────────────
+try:
+    from tianshou.data import Collector, VectorReplayBuffer
+    from tianshou.env import DummyVectorEnv
+    from tianshou.policy import PPOPolicy
+    from tianshou.trainer import OnpolicyTrainer
+    from tianshou.utils.net.common import Net
+    from tianshou.utils.net.discrete import Actor, Critic
+except ImportError as e:
+    raise ImportError(
+        f"无法导入 tianshou: {e}\n"
+        "请安装: pip install tianshou>=0.5.0\n"
+        "如使用 tianshou>=1.0，请参考官方文档调整 import。"
+    )
+
+from drift_mineflayer_env import DriftMineflayerEnv
+
+
+def load_training_config(config_path: Optional[str] = None) -> dict:
+    """加载训练配置"""
+    defaults = {
+        "algorithm": "PPO",
+        "lr": 3e-4,
+        "gamma": 0.99,
+        "gae_lambda": 0.95,
+        "eps_clip": 0.2,
+        "vf_coef": 0.5,
+        "ent_coef": 0.01,
+        "max_grad_norm": 0.5,
+        "repeat_per_collect": 10,
+        "batch_size": 256,
+        "hidden_sizes": [256, 256],
+        "buffer_size": 20000,
+        "max_epoch": 100,
+        "step_per_epoch": 5000,
+        "step_per_collect": 2000,
+        "episode_per_test": 10,
+        "num_train_envs": 1,
+        "num_test_envs": 1,
+    }
+
+    if config_path is None:
+        config_path = os.path.join(
+            os.path.dirname(__file__), "..", "configs", "evolution_params.yaml"
+        )
+
+    try:
+        with open(config_path, "r") as f:
+            raw = yaml.safe_load(f) or {}
+        defaults.update(raw.get("player_training", {}))
+    except FileNotFoundError:
+        pass
+
+    return defaults
+
+
+def make_env(level_id: str, player_id: str, bot_port: int = 9999):
+    """创建环境工厂函数"""
+    def _make():
+        return DriftMineflayerEnv(
+            level_id=level_id,
+            player_id=player_id,
+            bot_port=bot_port,
+        )
+    return _make
+
+
+def train(args):
+    """主训练循环"""
+    config = load_training_config(args.config)
+    if args.epochs is not None:
+        config["max_epoch"] = args.epochs
+
+    print(f"[Train] Level: {args.level}")
+    print(f"[Train] Config: {config}")
+
+    # 注意：多环境需要多个 Bot 实例（不同端口）
+    # 当前简化版：单环境训练
+    train_envs = DummyVectorEnv(
+        [make_env(args.level, "RLAgent_train", 9999)]
+    )
+    test_envs = DummyVectorEnv(
+        [make_env(args.level, "RLAgent_test", 9999)]
+    )
+
+    obs_shape = (64,)
+    # MultiDiscrete([3,3,2,2,2,7]) → 展平为单个离散维（乘积）用于 Categorical
+    action_shape = int(np.prod([3, 3, 2, 2, 2, 7]))
+
+    hidden_sizes = config.get("hidden_sizes", [256, 256])
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"[Train] Device: {device}")
+
+    net = Net(
+        state_shape=obs_shape,
+        hidden_sizes=hidden_sizes,
+        device=device,
+    )
+
+    actor = Actor(net, action_shape=action_shape, device=device).to(device)
+    critic = Critic(net, device=device).to(device)
+
+    optim = Adam(
+        list(actor.parameters()) + list(critic.parameters()),
+        lr=config["lr"],
+    )
+
+    policy = PPOPolicy(
+        actor=actor,
+        critic=critic,
+        optim=optim,
+        dist_fn=torch.distributions.Categorical,
+        discount_factor=config["gamma"],
+        gae_lambda=config["gae_lambda"],
+        eps_clip=config["eps_clip"],
+        vf_coef=config["vf_coef"],
+        ent_coef=config["ent_coef"],
+        max_grad_norm=config["max_grad_norm"],
+        action_space=train_envs.action_space,
+    )
+
+    buffer = VectorReplayBuffer(
+        total_size=config["buffer_size"],
+        buffer_num=1,
+    )
+
+    train_collector = Collector(policy, train_envs, buffer)
+    test_collector = Collector(policy, test_envs)
+
+    result = OnpolicyTrainer(
+        policy=policy,
+        train_collector=train_collector,
+        test_collector=test_collector,
+        max_epoch=config["max_epoch"],
+        step_per_epoch=config["step_per_epoch"],
+        repeat_per_collect=config["repeat_per_collect"],
+        episode_per_test=config["episode_per_test"],
+        batch_size=config["batch_size"],
+        step_per_collect=config["step_per_collect"],
+    ).run()
+
+    print(f"\n[Train] 训练完成!")
+    print(f"[Train] 最佳奖励: {result.get('best_reward', 'N/A')}")
+
+    # 保存模型
+    save_dir = os.path.join(os.path.dirname(__file__), "..", "checkpoints")
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, f"player_ppo_{args.level}.pth")
+    torch.save(policy.state_dict(), save_path)
+    print(f"[Train] 模型已保存: {save_path}")
+
+    return result
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Train Drift PlayerAgent with PPO")
+    parser.add_argument("--level", type=str, default="demo_rl_001", help="关卡 ID")
+    parser.add_argument("--config", type=str, default=None, help="配置文件路径")
+    parser.add_argument("--epochs", type=int, default=None, help="训练 epoch 数（覆盖配置）")
+    args = parser.parse_args()
+    train(args)
