@@ -45,6 +45,8 @@ def main():
                         help="启用课程学习：从 D1 开始逐步升级")
     parser.add_argument("--model", type=str, default=None,
                         help="训练好的 PPO 模型路径（.pth）")
+    parser.add_argument("--player-id", type=str, default="DriftRLAgent",
+                        help="玩家 ID（发送给 Drift 后端和 Bot）")
     args = parser.parse_args()
 
     # 默认设计描述（按目标难度选择）
@@ -92,9 +94,18 @@ def main():
             summary = meta.run_evolution(
                 initial_design=design_text,
                 level_id=sub_level_id,
+                player_id=args.player_id,
                 target_difficulty=d,
                 use_premium=args.premium,
             )
+            # F3: 将当前最佳模型传递到下一阶段
+            ckpt_path = os.path.join(
+                os.path.dirname(__file__), "..", "checkpoints",
+                f"best_{sub_level_id}.pth"
+            )
+            if os.path.exists(ckpt_path):
+                meta._load_policy(ckpt_path)
+                print(f"[Curriculum] 已加载 D{d} 最佳模型带入 D{d + 1}: {ckpt_path}")
             if summary.get("in_flow_zone"):
                 print(f"[Curriculum] D{d} 达到 Flow Zone，升级到 D{d + 1}")
             else:
@@ -104,6 +115,7 @@ def main():
         summary = meta.run_evolution(
             initial_design=args.design,
             level_id=args.level,
+            player_id=args.player_id,
             target_difficulty=args.difficulty,
             use_premium=args.premium,
         )

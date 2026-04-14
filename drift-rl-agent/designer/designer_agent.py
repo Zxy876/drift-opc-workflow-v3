@@ -63,6 +63,7 @@ class DesignerAgent:
         current_design: str,
         eval_report: dict,
         target_difficulty: int,
+        max_retries: int = 3,
     ) -> dict:
         """
         用 LLM 根据评估报告生成改进后的关卡设计
@@ -84,24 +85,42 @@ class DesignerAgent:
             direction=direction,
         )
 
-        resp = self.llm.chat.completions.create(
-            model=self.llm_model,
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            temperature=0.7,
-        )
+        last_err = None
+        for attempt in range(max_retries):
+            try:
+                resp = self.llm.chat.completions.create(
+                    model=self.llm_model,
+                    messages=[{"role": "user", "content": prompt}],
+                    response_format={"type": "json_object"},
+                    temperature=0.7,
+                )
+                result = json.loads(resp.choices[0].message.content)
+                if "design_text" not in result or not result["design_text"]:
+                    raise ValueError("LLM 响应缺少 design_text 字段")
 
-        result = json.loads(resp.choices[0].message.content)
+                # 记录设计历史
+                self.design_history.append({
+                    "eval_report": eval_report,
+                    "old_design": current_design,
+                    "new_design": result,
+                    "timestamp": time.time(),
+                })
+                return result
 
-        # 记录设计历史
-        self.design_history.append({
-            "eval_report": eval_report,
-            "old_design": current_design,
-            "new_design": result,
-            "timestamp": time.time(),
-        })
+            except Exception as e:
+                last_err = e
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt
+                    print(f"[Designer] LLM 调用失败 (尝试 {attempt + 1}/{max_retries}), {wait}s 后重试: {e}")
+                    time.sleep(wait)
 
-        return result
+        print(f"[Designer] LLM 调用全部失败，使用降级设计: {last_err}")
+        return {
+            "design_text": current_design,
+            "difficulty": target_difficulty,
+            "reasoning": "LLM 调用失败，保留原设计",
+            "changes": [],
+        }
 
     def generate_new_level(
         self,
@@ -148,33 +167,44 @@ class DesignerAgent:
             return self._publish_quick(text, level_id, player_id, title)
 
     def _publish_quick(self, text: str, level_id: str, player_id: str, title: str) -> dict:
-        """Quick Publish: POST /story/inject"""
-        resp = requests.post(
-            f"{self.drift_url}/story/inject",
-            json={
-                "level_id": level_id,
-                "title": title,
-                "text": text,
-                "player_id": player_id,
-            },
-            timeout=30,
-        )
-        resp.raise_for_status()
-        result = resp.json()
+        """Quick Publish: POST /story/inject（带 3 次重试）"""
+        last_err = None
+        for attempt in range(3):
+            try:
+                resp = requests.post(
+                    f"{self.drift_url}/story/inject",
+                    json={
+                        "level_id": level_id,
+                        "title": title,
+                        "text": text,
+                        "player_id": player_id,
+                    },
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                result = resp.json()
 
-        # 验证关卡是否已成功加入 Drift（E2）
-        verified = False
-        try:
-            time.sleep(2)
-            levels = self.get_existing_levels()
-            verified = any(
-                lv.get("level_id") == level_id or lv.get("id") == level_id
-                for lv in levels
-            )
-        except Exception:
-            pass
+                # 验证关卡是否已成功加入 Drift（E2）
+                verified = False
+                try:
+                    time.sleep(2)
+                    levels = self.get_existing_levels()
+                    verified = any(
+                        lv.get("level_id") == level_id or lv.get("id") == level_id
+                        for lv in levels
+                    )
+                except Exception:
+                    pass
 
-        return {"method": "quick", "result": result, "verified": verified}
+                return {"method": "quick", "result": result, "verified": verified}
+
+            except requests.RequestException as e:
+                last_err = e
+                if attempt < 2:
+                    print(f"[Designer] Quick Publish 失败 (尝试 {attempt + 1}/3), 3s 后重试: {e}")
+                    time.sleep(3)
+
+        raise requests.RequestException(f"Quick Publish 3 次均失败: {last_err}")
 
     def _publish_premium(self, text: str, level_id: str, player_id: str, difficulty: int) -> dict:
         """Premium Publish: POST /planner/execute → 轮询工作流"""
