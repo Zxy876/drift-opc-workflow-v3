@@ -1,5 +1,5 @@
 """
-Drift RL Agent 主入口 — 启动双环自进化系统
+Drift RL Agent 主入口 — 启动双环自进化系统（StrategyBot 版）
 
 用法：
   python meta/run_evolution.py --level demo_rl_001 --difficulty 3
@@ -22,7 +22,7 @@ from meta_agent import MetaAgent
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Drift RL Agent — 双环自进化系统")
+    parser = argparse.ArgumentParser(description="Drift RL Agent — 双环自进化系统（StrategyBot）")
     parser.add_argument("--level", type=str, default="demo_rl_001",
                         help="初始关卡 ID")
     parser.add_argument("--difficulty", type=int, default=3,
@@ -43,8 +43,9 @@ def main():
                         help="Mineflayer Bot TCP Bridge 端口")
     parser.add_argument("--curriculum", action="store_true",
                         help="启用课程学习：从 D1 开始逐步升级")
-    parser.add_argument("--model", type=str, default=None,
-                        help="训练好的 PPO 模型路径（.pth）")
+    parser.add_argument("--skill", type=str, default=None,
+                        choices=["beginner", "average", "expert"],
+                        help="单一技能级别（默认: 多级别评估）")
     parser.add_argument("--player-id", type=str, default="DriftRLAgent",
                         help="玩家 ID（发送给 Drift 后端和 Bot）")
     args = parser.parse_args()
@@ -80,7 +81,6 @@ def main():
         designer=designer,
         bot_port=args.bot_port,
         drift_url=args.drift_url,
-        model_path=args.model,
     )
 
     # 覆盖配置参数
@@ -107,14 +107,6 @@ def main():
                     target_difficulty=d,
                     use_premium=args.premium,
                 )
-                # F3: 将当前最佳模型传递到下一阶段
-                ckpt_path = os.path.join(
-                    os.path.dirname(__file__), "..", "checkpoints",
-                    f"best_{sub_level_id}.pth"
-                )
-                if os.path.exists(ckpt_path):
-                    meta._load_policy(ckpt_path)
-                    print(f"[Curriculum] 已加载 D{d} 最佳模型带入 D{d + 1}: {ckpt_path}")
                 if summary.get("in_flow_zone"):
                     print(f"[Curriculum] D{d} 达到 Flow Zone，升级到 D{d + 1}")
                 else:
