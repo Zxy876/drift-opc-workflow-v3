@@ -74,8 +74,23 @@ public class EasyCommand implements CommandExecutor {
                     return;
                 }
 
+                // 2. 获取当前难度
+                int currentDifficulty = 1;
+                try {
+                    String advResp = backend.postJson("/story/auto-advance/" + playerId, "{}");
+                    JsonObject advRoot = JsonParser.parseString(advResp).getAsJsonObject();
+                    if (advRoot.has("current_difficulty")) {
+                        currentDifficulty = advRoot.get("current_difficulty").getAsInt();
+                    }
+                } catch (Exception ignored) {
+                    // fallback to D1
+                }
+                final int targetDifficulty = Math.max(1, currentDifficulty - 1);
+
+                // 3. 以降低后的难度重新加载关卡
+                String loadBody = "{\"difficulty_override\":" + targetDifficulty + "}";
                 String loadResp = backend.postJson("/story/load/" + playerId + "/" + currentLevelId,
-                        "{}");
+                        loadBody);
                 JsonObject loadRoot = JsonParser.parseString(loadResp).getAsJsonObject();
 
                 final String levelId = currentLevelId;
@@ -100,9 +115,9 @@ public class EasyCommand implements CommandExecutor {
                         }
                     }
 
-                    p.sendMessage(ChatColor.GREEN + "" + ChatColor.BOLD + "\u96be\u5ea6\u5df2\u964d\u4f4e\uff01\u5173\u5361\u91cd\u65b0\u52a0\u8f7d: " + levelId);
+                    p.sendMessage(ChatColor.GREEN + "" + ChatColor.BOLD + "难度已降至 D" + targetDifficulty + "！关卡重新加载: " + levelId);
                     p.sendMessage(ChatColor.GRAY + "\u4eab\u53d7\u66f4\u8f7b\u677e\u7684\u4f53\u9a8c\u5427~");
-                    plugin.getLogger().info("[Easy] " + playerId + " lowered difficulty for level " + levelId);
+                    plugin.getLogger().info("[Easy] " + playerId + " lowered difficulty to D" + targetDifficulty + " for level " + levelId);
                 });
 
             } catch (Exception e) {

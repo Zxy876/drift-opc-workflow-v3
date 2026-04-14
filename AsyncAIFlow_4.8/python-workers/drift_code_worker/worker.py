@@ -13,7 +13,7 @@ This worker:
 
 Environment variables
 ---------------------
-  ASYNCAIFLOW_SERVER_BASE_URL       = http://localhost:8080
+  ASYNCAIFLOW_URL                   = http://localhost:8080
   ASYNCAIFLOW_WORKER_ID             = drift-code-worker-py
   ASYNCAIFLOW_CAPABILITIES          = drift_code
   ASYNCAIFLOW_POLL_INTERVAL_SECONDS = 1.0
@@ -155,7 +155,7 @@ def run_worker() -> None:
     # Inline import so top-level import errors don't mask env issues
     from asyncaiflow_client import AsyncAiFlowClient, AsyncAiFlowConfig  # type: ignore
 
-    server_url = os.getenv("ASYNCAIFLOW_SERVER_BASE_URL", "http://localhost:8080")
+    server_url = os.getenv("ASYNCAIFLOW_URL", "http://localhost:8080")
     worker_id = os.getenv("ASYNCAIFLOW_WORKER_ID", "drift-code-worker-py")
     capabilities = [
         cap.strip()

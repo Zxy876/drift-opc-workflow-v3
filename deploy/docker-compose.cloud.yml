@@ -103,9 +103,8 @@ services:
     working_dir: /app
     environment:
       - ASYNCAIFLOW_URL=http://asyncaiflow:8080
-      - ASYNCAIFLOW_WORKER_ID=drift-plan-worker-py
-      - ASYNCAIFLOW_CAPABILITIES=drift_plan
-      - ASYNCAIFLOW_POLL_INTERVAL_SECONDS=1.0
+      - DRIFT_PLAN_WORKER_ID=drift-plan-worker-py
+      - POLL_INTERVAL_S=1.0
     command: >
       bash -c "pip install -q requests && python worker.py"
 
@@ -120,7 +119,7 @@ services:
       - ./workers/drift_code_worker:/app
     working_dir: /app
     environment:
-      - ASYNCAIFLOW_SERVER_BASE_URL=http://asyncaiflow:8080
+      - ASYNCAIFLOW_URL=http://asyncaiflow:8080
       - ASYNCAIFLOW_WORKER_ID=drift-code-worker-py
       - ASYNCAIFLOW_CAPABILITIES=drift_code
       - ASYNCAIFLOW_POLL_INTERVAL_SECONDS=1.0
@@ -139,7 +138,7 @@ services:
       - ./workers/drift_review_worker:/app
     working_dir: /app
     environment:
-      - ASYNCAIFLOW_SERVER_BASE_URL=http://asyncaiflow:8080
+      - ASYNCAIFLOW_URL=http://asyncaiflow:8080
       - ASYNCAIFLOW_WORKER_ID=drift-review-worker-py
       - ASYNCAIFLOW_CAPABILITIES=drift_review
       - ASYNCAIFLOW_POLL_INTERVAL_SECONDS=1.0
@@ -158,9 +157,8 @@ services:
     working_dir: /app
     environment:
       - ASYNCAIFLOW_URL=http://asyncaiflow:8080
-      - ASYNCAIFLOW_WORKER_ID=drift-test-worker-py
-      - ASYNCAIFLOW_CAPABILITIES=drift_test
-      - ASYNCAIFLOW_POLL_INTERVAL_SECONDS=1.0
+      - DRIFT_TEST_WORKER_ID=drift-test-worker-py
+      - POLL_INTERVAL_S=1.0
     command: >
       bash -c "pip install -q requests && python worker.py"
 
@@ -175,7 +173,7 @@ services:
       - ./workers/drift_deploy_worker:/app
     working_dir: /app
     environment:
-      - ASYNCAIFLOW_SERVER_BASE_URL=http://asyncaiflow:8080
+      - ASYNCAIFLOW_URL=http://asyncaiflow:8080
       - ASYNCAIFLOW_WORKER_ID=drift-deploy-worker-py
       - ASYNCAIFLOW_CAPABILITIES=drift_deploy
       - ASYNCAIFLOW_POLL_INTERVAL_SECONDS=1.0
@@ -195,9 +193,8 @@ services:
     working_dir: /app
     environment:
       - ASYNCAIFLOW_URL=http://asyncaiflow:8080
-      - ASYNCAIFLOW_WORKER_ID=drift-git-push-worker-py
-      - ASYNCAIFLOW_CAPABILITIES=drift_git_push
-      - ASYNCAIFLOW_POLL_INTERVAL_SECONDS=1.0
+      - DRIFT_GIT_PUSH_WORKER_ID=drift-git-push-worker-py
+      - POLL_INTERVAL_S=1.0
     command: >
       bash -c "pip install -q requests && python worker.py"
 
@@ -216,8 +213,7 @@ services:
     environment:
       - ASYNCAIFLOW_URL=http://asyncaiflow:8080
       - DRIFT_EXPERIENCE_WORKER_ID=drift-experience-worker-1
-      - ASYNCAIFLOW_CAPABILITIES=drift_experience
-      - ASYNCAIFLOW_POLL_INTERVAL_SECONDS=1.0
+      - POLL_INTERVAL_S=1.0
       - DRIFT_URL=http://drift-backend:8000
     command: >
       bash -c "pip install -q requests && python worker.py"
@@ -235,7 +231,7 @@ services:
       - ./workers/drift_refresh_worker:/app
     working_dir: /app
     environment:
-      - ASYNCAIFLOW_SERVER_BASE_URL=http://asyncaiflow:8080
+      - ASYNCAIFLOW_URL=http://asyncaiflow:8080
       - ASYNCAIFLOW_WORKER_ID=drift-refresh-worker-py
       - ASYNCAIFLOW_CAPABILITIES=drift_refresh
       - ASYNCAIFLOW_POLL_INTERVAL_SECONDS=2.0
