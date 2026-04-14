@@ -29,7 +29,7 @@ let config = {
 try {
   const cfgPath = path.join(__dirname, '..', 'configs', 'drift_servers.yaml')
   const raw = fs.readFileSync(cfgPath, 'utf8')
-  config = yaml.load(raw)
+  config = yaml.load(raw, { schema: yaml.DEFAULT_SCHEMA })
   console.log('[Config] 已加载配置文件')
 } catch (err) {
   console.log(`[Config] 使用默认配置 (${err.message})`)
@@ -241,7 +241,7 @@ function getState() {
     level_completed: levelCompleted,
     triggers_completed: triggersCompleted,
     // R2: 读取后即刻清除，避免重复计入同一次死亡
-    last_death_cause: (() => { const v = lastDeathCause; lastDeathCause = null; return v })()
+    last_death_cause: (() => { const v = lastDeathCause; lastDeathCause = null; return v })(),
     // Drift 后端同步字段（由 getDriftState 异步刷新）
     current_difficulty: driftStateCache.current_difficulty || 0,
     triggers_remaining: driftStateCache.triggers_remaining || 0,
