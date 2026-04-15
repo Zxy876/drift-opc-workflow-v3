@@ -24,6 +24,17 @@ _sessions: Dict[str, dict] = {}
 _RL_AGENT_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "drift-rl-agent")
 )
+# 兜底：opt backend 路径计算不准时（__file__ 在 /opt），用 HOME 下的标准位置
+if not os.path.isdir(_RL_AGENT_DIR):
+    _home = os.path.expanduser("~")
+    _fallback = os.path.join(_home, "drift-opc-workflow-v3", "drift-rl-agent")
+    if os.path.isdir(_fallback):
+        _RL_AGENT_DIR = _fallback
+
+# 使用 drift-rl-agent 自己的 venv Python（包含 tianshou/requests/yaml 等依赖）
+_VENV_PYTHON = os.path.join(_RL_AGENT_DIR, "venv", "bin", "python3")
+if not os.path.exists(_VENV_PYTHON):
+    _VENV_PYTHON = "python3"  # fallback
 
 
 def _check_bot_bridge(port: int = 9999, timeout: float = 1.0) -> bool:
@@ -65,9 +76,9 @@ async def start_evolution(body: dict):
     session_id = str(uuid.uuid4())[:8]
     status_file = f"/tmp/evolution_{session_id}_status.json"
 
-    # 构建命令
+    # 构建命令（使用 drift-rl-agent 自己的 venv python）
     cmd = [
-        "python3", "meta/run_evolution.py",
+        _VENV_PYTHON, "meta/run_evolution.py",
         "--level",       body.get("level_id", f"panel_evo_{session_id}"),
         "--difficulty",  str(body.get("difficulty", 3)),
         "--episodes",    str(body.get("episodes", 5)),
