@@ -1,7 +1,9 @@
 # backend/app/main.py
 
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 # Routers
 from app.api.tree_api import router as tree_router
@@ -100,3 +102,11 @@ def home():
         ],
         "story_state": story_engine.get_public_state(),
     }
+
+
+# -----------------------------
+# 静态文件：面板（:8000/panel/drift-experience-panel.html）
+# -----------------------------
+_repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+if os.path.exists(os.path.join(_repo_root, "drift-experience-panel.html")):
+    app.mount("/panel", StaticFiles(directory=_repo_root, html=True), name="panel")
