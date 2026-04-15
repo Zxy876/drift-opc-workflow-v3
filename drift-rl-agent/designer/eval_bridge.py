@@ -29,6 +29,16 @@ def analyze_play_data(play_results: list) -> dict:
             "avg_exploration": 0.0,
         }
 
+    # BUG-C: 过滤掉 bot_not_ready 等无效局（避免假数据干扰通关率）
+    valid = [r for r in play_results if not r.get("error")]
+    if not valid:
+        return {
+            "completion_rate": 0.0, "avg_time": 0.0, "avg_deaths": 0.0,
+            "easy_usage_rate": 0.0, "death_causes": {}, "stuck_points": {},
+            "total_episodes": len(play_results), "avg_exploration": 0.0,
+            "note": "all_episodes_invalid",
+        }
+    play_results = valid
     total = len(play_results)
     completed = sum(1 for r in play_results if r.get("completed", False))
 

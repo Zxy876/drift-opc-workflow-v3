@@ -1833,11 +1833,18 @@ function startEvolutionPolling(sessionId) {
         document.querySelectorAll('.wf-pip-step').forEach(el => {
           el.classList.add(ok ? 'wf-done' : 'wf-failed')
         })
+        // D2: 隐藏 Stop 按鈕
+        const stopBtn = document.querySelector('#evoProgress button')
+        if (stopBtn) stopBtn.style.display = 'none'
         toast(ok
           ? `🧬 Evolution 完成！最终通关率: ${((r.completion_rate || 0) * 100).toFixed(0)}%`
           : `🧬 Evolution ${r.status}`,
           ok ? 'ok' : 'err')
         if (r.evolution_log) showEvolutionResults(r.evolution_log)
+        // D4: 结束时强制刷新一次 STATE 面板
+        if (typeof doRefreshState === 'function') {
+          doRefreshState().catch(() => {})
+        }
       }
     } catch (e) { /* 静默重试 */ }
   }, 3000)
@@ -1856,8 +1863,16 @@ function updateEvolutionUI(r) {
   const genEl = $('evoGen'), epEl = $('evoEp'), phaseEl = $('evoPhase')
   const crEl  = $('evoCR'),  fzEl = $('evoFZ')
 
-  if (genEl)   genEl.textContent   = gen
-  if (epEl)    epEl.textContent    = ep + ' / ' + totalEp
+  // D1: gen 改为 1-indexed
+  if (genEl)   genEl.textContent   = Math.min((gen + 1), r.total_generations || gen + 1)
+  // D3: ep 改为 1-indexed，完成后显示"完成"
+  if (epEl) {
+    if (['completed', 'failed', 'stopped'].includes(r.status)) {
+      epEl.textContent = '完成'
+    } else {
+      epEl.textContent = (ep + 1) + ' / ' + totalEp
+    }
+  }
   if (phaseEl) {
     phaseEl.textContent = phase
     const colors = { playing: 'var(--blue)', evaluating: 'var(--yellow)', designing: 'var(--purple)', publishing: 'var(--cyan)' }

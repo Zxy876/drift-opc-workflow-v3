@@ -102,6 +102,7 @@ async function getDriftState() {
 let levelCompleted = false
 let lastDeathCause = null
 let triggersCompleted = 0
+let levelResetTime = 0  // BUG-A: 关卡重置时间戳，5s 保护窗防假阳性通关
 
 // ─── 创建 Bot ──────────────────────────────────────────────
 let bot = null
@@ -141,13 +142,16 @@ function createBot() {
     chatHistory.push({ time: Date.now(), text })
     if (chatHistory.length > MAX_CHAT_HISTORY) chatHistory.shift()
 
-    // 检测关卡事件
+    // 检测关卡事件（BUG-A：删除宽泛的'关卡完成'匹配，增加 5s 时间保护）
     if ((text.includes('恭喜') && text.includes('通关'))
-        || text.includes('关卡完成')
         || text.includes('level completed')
         || text.includes('挑战成功')) {
-      levelCompleted = true
-      console.log('[Bot] 检测到通关!')
+      if (Date.now() - levelResetTime > 5000) {
+        levelCompleted = true
+        console.log('[Bot] 检测到通关!')
+      } else {
+        console.log(`[Bot] 忽略早期通关消息 (${Date.now() - levelResetTime}ms): ${text}`)
+      }
     }
     // 触发器检测（独立于通关检测）
     if (text.includes('触发') || text.includes('收集') || text.includes('完成任务')) {
@@ -212,6 +216,7 @@ function getState() {
     .map(e => ({
       type: e.type,
       name: e.name || e.displayName || 'unknown',
+      objectType: e.objectType || null,  // BUG-E: 区分掉落物 (e.g. "Item")
       rel_x: +(e.position.x - pos.x).toFixed(2),
       rel_y: +(e.position.y - pos.y).toFixed(2),
       rel_z: +(e.position.z - pos.z).toFixed(2),
@@ -239,7 +244,11 @@ function getState() {
   }))
 
   return {
-    position: [+pos.x.toFixed(2), +pos.y.toFixed(2), +pos.z.toFixed(2)],
+    position: [
+      isNaN(pos.x) ? 0 : +pos.x.toFixed(2),
+      isNaN(pos.y) ? 0 : +pos.y.toFixed(2),
+      isNaN(pos.z) ? 0 : +pos.z.toFixed(2),
+    ],
     health: bot.health,
     food: bot.food,
     on_ground: bot.entity.onGround,
@@ -321,6 +330,7 @@ function resetLevelFlags() {
   lastDeathCause = null
   triggersCompleted = 0
   chatHistory.length = 0
+  levelResetTime = Date.now()  // BUG-A: 记录重置时间，防止关卡加载消息触发假阳性
 }
 
 // ─── TCP Bridge 服务器 ──────────────────────────────────────

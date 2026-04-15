@@ -71,6 +71,19 @@ class StrategyBot:
         self.level_completed = False
         self.reaction_cooldown = 0
 
+        # BUG-C: 预检—先确认 Bot 已连接（最多 30 秒）
+        for i in range(30):
+            state = self.client.get_state()
+            if state.get("error") != "bot_not_ready":
+                break
+            if i == 0:
+                print(f"    [{self.skill_name}] 等待 Bot 连接...")
+            time.sleep(1)
+        else:
+            print(f"    [{self.skill_name}] \u26a0 Bot 30s 未就绪，跳过本局")
+            return {"error": "bot_not_ready"}
+
+        # Bot 已连上，再发 reset_level
         # 通过 TCP Bridge 重置关卡
         self.client.reset_level(self.level_id)
 
@@ -93,6 +106,15 @@ class StrategyBot:
         state = self.reset()
         start_time = time.time()
 
+        # BUG-C: reset 阶段 Bot 就没就绪，返回无效局标记
+        if state.get("error") == "bot_not_ready":
+            return {
+                "completed": False, "time": 0, "deaths": 0,
+                "easy_used": False, "death_causes": [],
+                "stuck_positions": [], "exploration": 0,
+                "triggers_completed": 0, "skill_level": self.skill_name,
+                "error": "bot_not_ready",
+            }
         not_ready_count = 0
         max_not_ready = 30  # 连续 30 次 bot_not_ready 就放弃本局
 
@@ -135,6 +157,8 @@ class StrategyBot:
 
             # 更新探索记录
             pos = state.get("position", [0, 0, 0])
+            # BUG-B: 清洗无效坐标（None/NaN 用 0 代替）
+            pos = [p if isinstance(p, (int, float)) else 0 for p in pos]
             grid_pos = (int(pos[0]) // 5, int(pos[1]) // 5, int(pos[2]) // 5)
             self.visited_positions.add(grid_pos)
 
@@ -190,6 +214,8 @@ class StrategyBot:
         health = state.get("health", 20)
         entities = state.get("nearby_entities", [])
         pos = state.get("position", [0, 0, 0])
+        # BUG-B: 清洗无效坐标（None/NaN 用 0 代替）
+        pos = [p if isinstance(p, (int, float)) else 0 for p in pos]
 
         # ── 1. DANGER: 低血量处理 ──
         if health < self.profile["flee_health_threshold"]:
@@ -219,9 +245,15 @@ class StrategyBot:
             return
 
         # ── 4. COLLECT: 收集附近物品 ──
+        # BUG-E: 扩大 type 匹配范围，并支持 objectType/name 字段
         items = [
             e for e in entities
-            if (e.get("type") == "object" or e.get("type") == "item")
+            if (e.get("type") in ("object", "item", "other")
+                or e.get("objectType") == "Item"
+                or e.get("name", "").lower() in (
+                    "item", "diamond", "emerald", "gold_ingot",
+                    "nether_star", "glowstone_dust", "prismarine_shard",
+                ))
             and self._entity_dist(e) < self.profile["collect_item_dist"]
         ]
         if items:
