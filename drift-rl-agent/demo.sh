@@ -39,9 +39,9 @@ echo -e "${CYAN}  关卡:  ${LEVEL_ID}${NC}"
 echo -e "${GREEN}========================================${NC}\n"
 
 # ─── 前提检查 ────────────────────────────────────────────
-if [ -z "$OPENAI_API_KEY" ]; then
-    echo -e "${YELLOW}[Warning] OPENAI_API_KEY 未设置，DesignerAgent 将无法调用 LLM${NC}"
-    echo -e "${YELLOW}          运行前请执行: export OPENAI_API_KEY=your-key-here${NC}\n"
+if [ -z "$GLM_API_KEY" ] && [ -z "$OPENAI_API_KEY" ]; then
+    echo -e "${YELLOW}[Warning] GLM_API_KEY 和 OPENAI_API_KEY 均未设置，DesignerAgent 将无法调用 LLM${NC}"
+    echo -e "${YELLOW}          运行前请执行: export GLM_API_KEY=your-glm-api-key-here${NC}\n"
 fi
 
 # 检查 Node.js 依赖

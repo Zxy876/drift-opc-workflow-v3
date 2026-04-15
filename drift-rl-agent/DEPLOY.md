@@ -8,7 +8,7 @@
 | Python | 3.10+ | MetaAgent / DesignerAgent |
 | Minecraft Server | 1.20.x (PaperMC) | 世界环境，端口 25565 |
 | Drift Backend | — | 地图生成 API，端口 8000 |
-| OPENAI_API_KEY | — | DesignerAgent LLM 调用 |
+| GLM_API_KEY（或 OPENAI_API_KEY） | — | DesignerAgent LLM 调用 |
 
 ---
 
@@ -47,7 +47,7 @@ drift_backend:
 ### 4. 配置密钥
 
 ```bash
-export OPENAI_API_KEY=your-openai-api-key-here
+export GLM_API_KEY=your-glm-api-key-here
 ```
 
 ---
@@ -109,7 +109,7 @@ python3 meta/run_evolution.py \
 | `--difficulty` | 难度 1-5 | 3 |
 | `--episodes` | 每代局数 | 5 |
 | `--generations` | 最大代数 | 5 |
-| `--skill` | 单一技能模式 (combat/explore/build) | None（全技能） |
+| `--skill` | 单一技能模式 (beginner/average/expert) | None（全技能） |
 | `--player-id` | Bot 玩家 ID | bot_001 |
 | `--curriculum` | 课程学习模式 | off |
 | `--premium` | 使用高级 LLM (gpt-4o) | False |
