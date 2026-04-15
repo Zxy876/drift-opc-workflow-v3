@@ -56,6 +56,27 @@ EPISODES_PER_SKILL: dict[str, int] = {
 }
 
 
+def load_episodes_per_skill(config_path: str | None = None) -> dict[str, int]:
+    """
+    从 YAML 加载每代各技能级别的局数分配，加载失败则返回默认值。
+    """
+    if config_path is None:
+        config_path = os.path.join(
+            os.path.dirname(__file__), "..", "configs", "skill_profiles.yaml"
+        )
+
+    try:
+        with open(config_path, "r") as f:
+            raw = yaml.safe_load(f) or {}
+        eps = raw.get("episodes_per_skill", {})
+        if eps and all(isinstance(v, int) and v > 0 for v in eps.values()):
+            return eps
+    except FileNotFoundError:
+        pass
+
+    return dict(EPISODES_PER_SKILL)
+
+
 def load_skill_profiles(config_path: str | None = None) -> dict[str, dict[str, Any]]:
     """
     从 YAML 配置文件加载技能档案，加载失败则返回默认值。
