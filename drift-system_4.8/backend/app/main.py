@@ -108,5 +108,11 @@ def home():
 # 静态文件：面板（:8000/panel/drift-experience-panel.html）
 # -----------------------------
 _repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+# 兜底：如果 __file__ 路径计算不准，也检查 HOME 下的标准位置
+if not os.path.exists(os.path.join(_repo_root, "drift-experience-panel.html")):
+    _home = os.path.expanduser("~")
+    _fallback = os.path.join(_home, "drift-opc-workflow-v3")
+    if os.path.exists(os.path.join(_fallback, "drift-experience-panel.html")):
+        _repo_root = _fallback
 if os.path.exists(os.path.join(_repo_root, "drift-experience-panel.html")):
     app.mount("/panel", StaticFiles(directory=_repo_root, html=True), name="panel")
