@@ -25,17 +25,28 @@ class DesignerAgent:
         self,
         drift_url: str = "http://35.201.132.58:8000",
         asyncaiflow_url: str = "http://35.201.132.58:8080",
-        llm_model: str = "gpt-4",
+        llm_model: str = "glm-4",
         config_path: Optional[str] = None,
     ):
         self.drift_url = drift_url.rstrip("/")
         self.async_url = asyncaiflow_url.rstrip("/")
         self.llm_model = llm_model
-        self.llm = OpenAI()  # 从环境变量 OPENAI_API_KEY 读取
+        self.llm = self._build_llm_client()
         self.design_history: list = []
 
         # 加载配置
         self._load_config(config_path)
+
+    def _build_llm_client(self) -> OpenAI:
+        """构建 LLM 客户端，优先使用 GLM_API_KEY（智谱），其次 OPENAI_API_KEY"""
+        glm_key = os.environ.get("GLM_API_KEY")
+        if glm_key:
+            return OpenAI(
+                api_key=glm_key,
+                base_url="https://open.bigmodel.cn/api/paas/v4/",
+            )
+        # 回退到 OpenAI（从环境变量 OPENAI_API_KEY 读取）
+        return OpenAI()
 
     def _load_config(self, config_path: Optional[str]):
         """加载进化参数配置"""
