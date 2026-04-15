@@ -142,9 +142,14 @@ function createBot() {
     if (chatHistory.length > MAX_CHAT_HISTORY) chatHistory.shift()
 
     // 检测关卡事件
-    if (text.includes('恭喜') || text.includes('通关') || text.includes('完成')) {
+    if ((text.includes('恭喜') && text.includes('通关'))
+        || text.includes('关卡完成')
+        || text.includes('level completed')
+        || text.includes('挑战成功')) {
       levelCompleted = true
+      console.log('[Bot] 检测到通关!')
     }
+    // 触发器检测（独立于通关检测）
     if (text.includes('触发') || text.includes('收集') || text.includes('完成任务')) {
       triggersCompleted++
     }
@@ -153,8 +158,22 @@ function createBot() {
   })
 
   bot.on('death', () => {
-    lastDeathCause = 'death'
-    console.log('[Bot] 死亡')
+    // 从最近聊天消息推断死因
+    const recentChat = chatHistory.slice(-3).map(c => c.text).join(' ')
+    if (recentChat.includes('坠落') || recentChat.includes('fell')) {
+      lastDeathCause = 'fall_damage'
+    } else if (recentChat.includes('溣水') || recentChat.includes('drowned')) {
+      lastDeathCause = 'drowning'
+    } else if (recentChat.includes('被') || recentChat.includes('slain')) {
+      lastDeathCause = 'killed_by_mob'
+    } else if (recentChat.includes('爆炸') || recentChat.includes('explode')) {
+      lastDeathCause = 'explosion'
+    } else if (recentChat.includes('岩浆') || recentChat.includes('lava')) {
+      lastDeathCause = 'lava'
+    } else {
+      lastDeathCause = 'unknown'
+    }
+    console.log(`[Bot] 死亡 (原因: ${lastDeathCause})`)
   })
 
   bot.on('health', () => {

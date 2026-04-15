@@ -50,6 +50,8 @@ def main():
                         help="玩家 ID（发送给 Drift 后端和 Bot）")
     parser.add_argument("--status-file", type=str, default=None,
                         help="实时写入进化进度的 JSON 文件路径（供面板轮询）")
+    parser.add_argument("--max-steps", type=int, default=2000,
+                        help="每局最大步数（默认 2000，约 100s/局）")
     args = parser.parse_args()
 
     import signal
@@ -92,6 +94,7 @@ def main():
         meta.episodes_per_eval = args.episodes
     if args.generations:
         meta.max_generations = args.generations
+    meta.max_steps = args.max_steps
 
     # 运行进化
     try:

@@ -544,6 +544,10 @@ textarea { min-height: 80px; }
             <label>最大代数</label>
             <input type="text" id="evoGenerations" value="3" style="text-align:center" />
           </div>
+          <div>
+            <label>每局步数</label>
+            <input type="text" id="evoMaxSteps" value="2000" style="text-align:center" />
+          </div>
         </div>
       </div>
       <button class="btn btn-green btn-publish" id="btnPublish" onclick="doPublish()">🚀 Publish to Minecraft</button>
@@ -1733,8 +1737,9 @@ async function doStartEvolution(btn, text, levelId, playerId) {
     const difficulty   = parseInt($('evoDifficulty').value   || '3')
     const episodes     = parseInt($('evoEpisodes').value     || '5')
     const generations  = parseInt($('evoGenerations').value  || '3')
+    const maxSteps     = parseInt($('evoMaxSteps').value     || '2000')
 
-    const body = { design: text, level_id: levelId, player_id: playerId, difficulty, episodes, generations }
+    const body = { design: text, level_id: levelId, player_id: playerId, difficulty, episodes, generations, max_steps: maxSteps }
     const r = await POST('/evolution/start', body)
     if (r.error) throw new Error(r.error)
 
@@ -1791,6 +1796,9 @@ function showEvolutionMonitor(sessionId, difficulty, episodes, generations) {
       </div>
       <div id="evoSkills" style="margin-top:4px;font-size:10px;color:var(--text-dim)"></div>
       <div id="evoDesign" style="margin-top:4px;font-size:10px;color:var(--text-dim);max-height:60px;overflow:auto"></div>
+      <div style="margin-top:6px">
+        <button class="btn btn-sm" style="background:var(--red);color:#fff;padding:2px 10px;font-size:10px" onclick="stopEvolution()">⏹ Stop Evolution</button>
+      </div>
     </div>`
 }
 
@@ -1813,7 +1821,7 @@ function startEvolutionPolling(sessionId) {
       updateEvolutionUI(r)
       // Bug3 fix: Evolution 运行期间每 ~9s 自动刷新 STATE 面板
       if (pollCount % 3 === 0 && typeof doRefreshState === 'function') {
-        try { doRefreshState() } catch (e) {}
+        doRefreshState().catch(() => {})  // fire-and-forget，忽略异步错误
       }
       if (['completed', 'failed', 'stopped', 'error'].includes(r.status)) {
         clearInterval(_evoPollTimer); _evoPollTimer = null
@@ -1874,7 +1882,14 @@ function updateEvolutionUI(r) {
 
   // 高亮 pipeline 步骤（每代 3 步: Play=0, Eval=1, Design/Publishing=2）
   const phaseIdx = { playing: 0, evaluating: 1, designing: 2, publishing: 2 }[phase] ?? 0
-  const stepIdx  = gen * 3 + phaseIdx
+  const totalGens = r.total_generations || 1
+  let stepIdx
+  if (gen >= totalGens - 1 && phaseIdx >= 2) {
+    // 最后一代没有 Design 步骤，高亮最后一个 pipeline 步骤
+    stepIdx = document.querySelectorAll('.wf-pip-step').length - 1
+  } else {
+    stepIdx = gen * 3 + phaseIdx
+  }
   document.querySelectorAll('.wf-pip-step').forEach((el, i) => {
     el.classList.remove('wf-done', 'wf-running')
     if (i < stepIdx) el.classList.add('wf-done')

@@ -60,6 +60,7 @@ class MetaAgent:
         # 加载技能档案（供 run_evolution 打印摘要使用）
         self.skill_profiles = load_skill_profiles()
         self.episodes_per_skill_map = load_episodes_per_skill()
+        self.max_steps = 2000  # 每局最大步数（可由 run_evolution.py --max-steps 覆盖）
 
     def _write_status(self, data: dict):
         """写入状态文件供面板轮询（无 status_file 时静默跳过）"""
@@ -123,6 +124,26 @@ class MetaAgent:
         print(f"# 最大代数: {self.max_generations}")
         print(f"# 技能档案: {list(self.skill_profiles.keys())}")
         print(f"{'#' * 70}\n")
+
+        # ─── BUG-1 修复：首代游玩前先发布初始关卡设计 ───
+        print(f"\n[Meta] 正在发布初始关卡设计到 Drift...")
+        self._write_status({
+            "status": "running",
+            "current_phase": "publishing",
+            "generation": -1,
+            "total_generations": self.max_generations,
+            "design_text": current_design,
+            "history": history,
+        })
+        try:
+            initial_publish = self.designer.publish_to_drift(
+                {"design_text": initial_design, "difficulty": target_difficulty},
+                level_id, player_id, use_premium=False,
+            )
+            print(f"[Meta] 初始关卡已发布: {initial_publish.get('method', '?')}")
+        except Exception as e:
+            print(f"[Meta] 初始关卡发布失败（继续）: {e}")
+        time.sleep(3)  # 等待 MC 服务器加载初始关卡
 
         for gen in range(self.max_generations):
             print(f"\n{'=' * 60}")
@@ -306,13 +327,18 @@ class MetaAgent:
             skills = list(self.episodes_per_skill_map.items())
             for i, (skill, count) in enumerate(skills):
                 if i == len(skills) - 1:
-                    # 最后一个技能：用剩余局数，确保总数精确
-                    n = self.episodes_per_eval - allocated
+                    # 最后一个技能：用剩余配额（可为 0）
+                    n = max(0, self.episodes_per_eval - allocated)
                 else:
-                    n = max(1, round(count / total_default * self.episodes_per_eval))
+                    n = round(count / total_default * self.episodes_per_eval)
+                    # 不超过剩余配额，且不强制 ≥1（避免 episodes_per_eval 很小时溢出）
+                    n = max(0, min(n, self.episodes_per_eval - allocated))
                     allocated += n
                 for _ in range(n):
                     schedule.append(skill)
+            # 如果分配全为 0（episodes_per_eval 极小），至少用 average 技能玩指定局数
+            if not schedule:
+                schedule = ["average"] * self.episodes_per_eval
             random.shuffle(schedule)  # 打乱顺序，避免系统偏差
 
         for ep, skill in enumerate(schedule):
@@ -324,6 +350,7 @@ class MetaAgent:
                     skill=skill,
                     level_id=level_id,
                     player_id=player_id,
+                    max_steps=self.max_steps,
                 )
                 result = bot.play_episode()
                 result["episode"] = ep

@@ -73,6 +73,19 @@ async def start_evolution(body: dict):
                      "请先在服务器运行: node player/player_bot.js"
         }
 
+    # BUG-3 互斥检查：同一时间只允许一个 Evolution 会话
+    running = [
+        s for s in _sessions.values()
+        if s["status"] in ("starting", "running")
+        and s.get("process") and s["process"].poll() is None
+    ]
+    if running:
+        return {
+            "error": f"已有进化会话正在运行 (#{running[0]['session_id']})。"
+                     "请先停止现有会话再启动新的。",
+            "running_session": running[0]["session_id"]
+        }
+
     session_id = str(uuid.uuid4())[:8]
     status_file = f"/tmp/evolution_{session_id}_status.json"
 
@@ -92,6 +105,8 @@ async def start_evolution(body: dict):
         cmd += ["--premium"]
     if body.get("skill"):
         cmd += ["--skill", body["skill"]]
+    if body.get("max_steps"):
+        cmd += ["--max-steps", str(int(body["max_steps"]))]
 
     # 初始化会话记录
     _sessions[session_id] = {
@@ -129,18 +144,27 @@ async def start_evolution(body: dict):
             _sessions[session_id]["status"] = "running"
             _sessions[session_id]["pid"] = proc.pid
 
-            # 收集输出（最后 200 行）
+            # 收集输出（最后 200 行）并实时打印到日志
+            import logging
+            logger = logging.getLogger("evolution")
+
             output_lines: list = []
             for line in proc.stdout:
-                output_lines.append(line.rstrip())
+                stripped = line.rstrip()
+                output_lines.append(stripped)
+                logger.info(f"[evo#{session_id}] {stripped}")
                 if len(output_lines) > 200:
                     output_lines.pop(0)
 
             proc.wait()
-            _sessions[session_id]["status"] = (
-                "completed" if proc.returncode == 0 else "failed"
-            )
-            _sessions[session_id]["exit_code"] = proc.returncode
+            rc = proc.returncode
+            if rc == 0:
+                _sessions[session_id]["status"] = "completed"
+            elif rc in (-2, -signal.SIGINT, 130):  # SIGINT / Ctrl+C 优雅退出
+                _sessions[session_id]["status"] = "stopped"
+            else:
+                _sessions[session_id]["status"] = "failed"
+            _sessions[session_id]["exit_code"] = rc
             _sessions[session_id]["output_tail"] = output_lines[-50:]
         except Exception as exc:
             _sessions[session_id]["status"] = "error"

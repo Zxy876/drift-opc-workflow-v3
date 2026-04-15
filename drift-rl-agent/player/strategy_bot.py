@@ -33,6 +33,7 @@ class StrategyBot:
         player_id: str = "DriftRLAgent",
         max_steps: int = 6000,
         tick_interval: float = 0.05,
+        wall_timeout: float = 300.0,
     ):
         self.client = client
         self.skill_name = skill
@@ -41,6 +42,7 @@ class StrategyBot:
         self.player_id = player_id
         self.max_steps = max_steps
         self.tick_interval = tick_interval
+        self.wall_timeout = wall_timeout
 
         # 运行时状态
         self.steps = 0
@@ -72,13 +74,14 @@ class StrategyBot:
         # 通过 TCP Bridge 重置关卡
         self.client.reset_level(self.level_id)
 
-        # 等待关卡加载（最多 10 秒）
-        for _ in range(10):
+        # 等待关卡加载（最多 15 秒）
+        for i in range(15):
             time.sleep(1)
             state = self.client.get_state()
             if state.get("error") != "bot_not_ready":
+                print(f"    [{self.skill_name}] 关卡已加载 (等待 {i + 1}s)")
                 return state
-        print(f"[StrategyBot] 警告: 关卡加载超时 (10s)")
+        print(f"    [{self.skill_name}] 警告: 关卡加载超时 (15s)，继续执行")
         return self.client.get_state()
 
     def play_episode(self) -> dict:
@@ -90,14 +93,28 @@ class StrategyBot:
         state = self.reset()
         start_time = time.time()
 
+        not_ready_count = 0
+        max_not_ready = 30  # 连续 30 次 bot_not_ready 就放弃本局
+
         while self.steps < self.max_steps:
             self.steps += 1
 
+            # 检查单局总时间限制
+            if time.time() - start_time > self.wall_timeout:
+                print(f"    [{self.skill_name}] 单局超时 ({self.wall_timeout:.0f}s)，结束")
+                break
+
             # 检查结束条件
             if state.get("error") == "bot_not_ready":
+                not_ready_count += 1
+                if not_ready_count >= max_not_ready:
+                    print(f"    [{self.skill_name}] Bot 连续 {max_not_ready} 次未就绪，放弃本局")
+                    break
                 time.sleep(1)
                 state = self.client.get_state()
                 continue
+            else:
+                not_ready_count = 0  # 正常状态时重置计数器
 
             health = state.get("health", 20)
 
