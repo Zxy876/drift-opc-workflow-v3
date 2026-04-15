@@ -5,10 +5,10 @@ AI 玩家 + AI 关卡设计师的闭环进化系统。
 ## 架构
 
 ```
-PlayerAgent (Mineflayer + Tianshou PPO)
-    ↓ 游玩数据
+StrategyBot (规则引擎 + 多技能参数)
+    ↓ 分技能游玩数据
 EvalBridge (评估桥接)
-    ↓ 评估报告
+    ↓ 多技能评估报告
 DesignerAgent (LLM + Drift API)
     ↓ 新关卡
 MetaAgent (双环控制器) → 循环
@@ -21,10 +21,10 @@ MetaAgent (双环控制器) → 循环
 │                    MetaAgent (双环控制器)                      │
 │                                                             │
 │  ┌──────────────┐       评估报告       ┌────────────────┐    │
-│  │ PlayerAgent  │ ──────────────────→ │ DesignerAgent  │    │
-│  │ (Mineflayer  │                     │ (LLM GPT-4 +   │    │
-│  │  + Tianshou  │ ←────────────────── │  Drift API)    │    │
-│  │  PPO)        │     新关卡 ID        └────────────────┘    │
+│  │ StrategyBot  │ ──────────────────→ │ DesignerAgent  │    │
+│  │ (规则引擎 +   │   分技能评估报告      │ (LLM GPT-4 +   │    │
+│  │  多技能参数)  │ ←────────────────── │  Drift API)    │    │
+│  │              │     新关卡 ID        └────────────────┘    │
 │  └──────┬───────┘                              │            │
 │         │ TCP Bridge :9999                     │            │
 │         ▼                                      ▼            │
@@ -43,13 +43,7 @@ MetaAgent (双环控制器) → 循环
 # Node.js (18+)
 npm install
 
-# Python venv
-python3 -m venv venv && source venv/bin/activate
-
-# ⚠️ CPU-only 服务器（无 GPU）— 需先单独安装 CPU torch，否则会安装 CUDA 版导致 import 超时
-pip install torch --index-url https://download.pytorch.org/whl/cpu
-
-# 其余依赖
+# Python 依赖（轻量，无需 GPU / torch）
 pip install -r requirements.txt
 ```
 
@@ -68,19 +62,17 @@ export OPENAI_API_KEY=your-key-here
 node player/player_bot.js
 ```
 
-### 4. 训练 PlayerAgent（可选）
+### 4. 运行进化
 
 ```bash
-python player/train_player.py --level demo_rl_001
-```
-
-### 5. 运行进化
-
-```bash
+# 默认（混合技能档案）
 python meta/run_evolution.py --level demo_rl_001 --difficulty 3
+
+# 指定初始技能档案
+python meta/run_evolution.py --level demo_rl_001 --difficulty 3 --skill average
 ```
 
-### 6. 查看 Bot 视角（可选）
+### 5. 查看 Bot 视角（可选）
 
 ```bash
 node viewer/viewer_server.js
@@ -92,8 +84,8 @@ node viewer/viewer_server.js
 | 文件 | 用途 |
 |------|------|
 | `configs/drift_servers.yaml` | 服务器地址、Bot 用户名、LLM 模型 |
-| `configs/reward_params.yaml` | 奖励函数参数（可热调参） |
-| `configs/evolution_params.yaml` | 进化参数 + PPO 训练超参数 |
+| `configs/skill_profiles.yaml` | 三档技能参数（beginner/average/expert） |
+| `configs/evolution_params.yaml` | 进化超参数（Flow Zone、世代数等） |
 
 ## API 参考
 
@@ -139,13 +131,17 @@ evolution:
 
 ## 新增功能 (Phase 2)
 
+> **注意**: 以下描述基于旧版 PPO/RL 架构。Phase 8 已重构为 StrategyBot，相关文件已移至 `_legacy/`。
+
 - **一键启动**: `bash run.sh demo_rl_001 3`
 - **课程学习**: `python meta/run_evolution.py --curriculum --difficulty 5`
 - **批量生成**: `python designer/batch_generate.py --prefix my_world --publish quick`
-- **模型推理**: `python player/play_with_model.py --model checkpoints/player_ppo.pth`
+- **模型推理**: `python _legacy/player/play_with_model.py --model checkpoints/player_ppo.pth`
 - **进化可视化**: `python meta/visualize_evolution.py`
 
 ## 新增功能 (Phase 3)
+
+> **注意**: 以下描述基于旧版 PPO/RL 架构。Phase 8 已重构为 StrategyBot，相关文件已移至 `_legacy/`。
 
 ### 观测空间扩展 (F1 + S1)
 `player/observation_space.py` 统一定义 64 维观测向量布局；`obs[57:62]` 新增有效信号：
@@ -198,6 +194,8 @@ python tests/smoke_test.py
 
 ## 新增功能 (Phase 4)
 
+> **注意**: 以下描述基于旧版 PPO/RL 架构。Phase 8 已重构为 StrategyBot，相关文件已移至 `_legacy/`。
+
 ### 模型格式统一 (C1)
 所有模型保存/加载统一支持两种格式：
 - **actor-only**: `torch.save(actor.state_dict(), path)` — 推理用
@@ -229,6 +227,8 @@ Quick Publish 和 Premium Publish 均支持 3 次重试。
 
 ## 新增功能 (Phase 5)
 
+> **注意**: 以下描述基于旧版 PPO/RL 架构。Phase 8 已重构为 StrategyBot，相关文件已移至 `_legacy/`。
+
 ### 死亡检测优化 (Q3)
 `last_death_cause` 优先于 `health <= 0` 判断，避免重复计入。Bot 侧读取后立即清除。
 
@@ -242,6 +242,8 @@ Quick Publish 和 Premium Publish 均支持 3 次重试。
 支持 `PLAYER_ID` 环境变量，自动传递给 `--player-id`。
 
 ## 新增功能 (Phase 6)
+
+> **注意**: 以下描述基于旧版 PPO/RL 架构。Phase 8 已重构为 StrategyBot，相关文件已移至 `_legacy/`。
 
 ### TensorBoard 训练可视化 (I1)
 `train_player.py` 集成 TensorBoard Logger，训练时自动生成事件文件到 `tb_logs/` 目录。
@@ -270,4 +272,41 @@ Ctrl+C 中断进化循环时自动导出已有日志。
 ```bash
 python tests/smoke_test.py
 # 无需 MC 服务器，25 项测试 (torch 未装时 9 项跳过)
+```
+
+## Phase 8: StrategyBot 重构
+
+### 核心变更
+
+- **移除**: `tianshou`, `gymnasium`, `torch`, `tensorboard` — 依赖从 8 个降至 4 个
+- **新增**: `StrategyBot` 规则引擎（6 优先级状态机：危险 > 战斗 > 交互 > 收集 > 探索 > 待机）
+- **新增**: 三档技能档案（`beginner` / `average` / `expert`），参数化反应速度、战斗距离、Pathfinder 开关等
+- **新增**: 多技能评估 — 每世代对 3 种技能档案分别采集数据，Flow Zone 以 `average` 通关率为基准
+
+### 技能档案
+
+| 技能档案 | reaction_ticks | use_easy_probability | 描述 |
+|---------|---------------|---------------------|------|
+| `beginner` | 10 | 0.3 | 模拟新手，慢反应，常用 /easy |
+| `average` | 5 | 0.1 | 模拟普通玩家，Flow Zone 基准 |
+| `expert` | 2 | 0.0 | 模拟高手，快反应，不用 /easy |
+
+### 归档文件
+
+旧版 PPO/RL 文件已通过 `git mv` 移至 `_legacy/`（历史记录保留）：
+
+| 归档路径 | 原路径 |
+|---------|-------|
+| `_legacy/player/drift_mineflayer_env.py` | `player/` |
+| `_legacy/player/train_player.py` | `player/` |
+| `_legacy/player/play_with_model.py` | `player/` |
+| `_legacy/player/observation_space.py` | `player/` |
+| `_legacy/player/reward_functions.py` | `player/` |
+| `_legacy/player/action_utils.py` | `player/` |
+| `_legacy/configs/reward_params.yaml` | `configs/` |
+
+### 冒烟测试
+```bash
+python tests/smoke_test.py
+# 24 项测试，无需 MC 服务器，无需 torch
 ```

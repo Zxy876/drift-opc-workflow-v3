@@ -81,3 +81,77 @@ def format_eval_for_llm(eval_report: dict) -> str:
         lines.append(f"卡点位置: {points}")
 
     return "\n".join(lines)
+
+
+def analyze_multi_skill_data(play_results: list) -> dict:
+    """
+    分析多技能级别的游玩数据，产出增强版评估报告
+
+    Args:
+        play_results: 每局结果列表（每条需包含 "skill_level" 字段）
+
+    Returns:
+        增强版评估报告（向后兼容 analyze_play_data 的所有字段）
+    """
+    # 基础报告（兼容旧格式）
+    base_report = analyze_play_data(play_results)
+
+    # 按技能级别分组
+    by_skill: dict[str, list] = {}
+    for r in play_results:
+        skill = r.get("skill_level", "average")
+        by_skill.setdefault(skill, []).append(r)
+
+    # 各技能级别的子报告
+    completion_by_skill = {}
+    avg_time_by_skill = {}
+    for skill, results in by_skill.items():
+        sub = analyze_play_data(results)
+        completion_by_skill[skill] = sub["completion_rate"]
+        avg_time_by_skill[skill] = sub["avg_time"]
+
+    # 难度评估
+    avg_cr = completion_by_skill.get("average", base_report["completion_rate"])
+    if avg_cr < 0.4:
+        assessment = "too_hard"
+    elif avg_cr < 0.6:
+        assessment = "slightly_hard"
+    elif avg_cr <= 0.8:
+        assessment = "balanced"
+    elif avg_cr <= 0.95:
+        assessment = "slightly_easy"
+    else:
+        assessment = "too_easy"
+
+    base_report.update({
+        "completion_by_skill": completion_by_skill,
+        "avg_time_by_skill": avg_time_by_skill,
+        "primary_skill_used": "average",
+        "difficulty_assessment": assessment,
+    })
+
+    return base_report
+
+
+def format_multi_skill_eval(eval_report: dict) -> str:
+    """将多技能评估报告格式化为 LLM 友好的文本"""
+    lines = [format_eval_for_llm(eval_report)]
+
+    cbs = eval_report.get("completion_by_skill", {})
+    if cbs:
+        lines.append("\n分技能通关率:")
+        for skill, cr in cbs.items():
+            lines.append(f"  {skill}: {cr:.0%}")
+
+    assessment = eval_report.get("difficulty_assessment", "")
+    if assessment:
+        labels = {
+            "too_hard": "过难",
+            "slightly_hard": "偏难",
+            "balanced": "平衡",
+            "slightly_easy": "偏简单",
+            "too_easy": "过简单",
+        }
+        lines.append(f"难度评估: {labels.get(assessment, assessment)}")
+
+    return "\n".join(lines)

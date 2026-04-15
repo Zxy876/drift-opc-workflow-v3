@@ -6,10 +6,10 @@
 #
 # 示例:
 #   bash run.sh demo_rl_001 3
-#   bash run.sh demo_rl_001 5 --premium --model checkpoints/player_ppo_demo.pth
+#   bash run.sh demo_rl_001 5 --premium --skill expert
 #   bash run.sh demo_rl_001 3 --curriculum --generations 15
 #   bash run.sh demo_rl_001 3 --viewer              # 同时启动 prismarine-viewer
-#   额外参数: --premium --curriculum --player-id <ID> --model <path> 等
+#   额外参数: --premium --curriculum --player-id <ID> --skill <beginner|average|expert> 等
 #
 # 环境变量:
 #   PLAYER_ID   自定义玩家 ID（等同于传入 --player-id <ID>）
@@ -42,7 +42,7 @@ if [ -n "$PLAYER_ID" ]; then
 fi
 
 echo "=========================================="
-echo " Drift RL Agent — 双环自进化系统"
+echo " Drift RL Agent — 双环自进化系统（StrategyBot）"
 echo " Level: $LEVEL | Difficulty: D$DIFFICULTY"
 [[ ${#EXTRA_ARGS[@]} -gt 0 ]] && echo " Extra: ${EXTRA_ARGS[*]}"
 echo "=========================================="

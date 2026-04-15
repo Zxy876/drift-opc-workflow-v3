@@ -83,6 +83,10 @@ class DesignerAgent:
             stuck_points=json.dumps(eval_report["stuck_points"], ensure_ascii=False),
             target_difficulty=target_difficulty,
             direction=direction,
+            beginner_cr=eval_report.get("completion_by_skill", {}).get("beginner", eval_report["completion_rate"]),
+            average_cr=eval_report.get("completion_by_skill", {}).get("average", eval_report["completion_rate"]),
+            expert_cr=eval_report.get("completion_by_skill", {}).get("expert", eval_report["completion_rate"]),
+            difficulty_assessment=eval_report.get("difficulty_assessment", "unknown"),
         )
 
         last_err = None

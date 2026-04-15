@@ -16,6 +16,12 @@ LEVEL_IMPROVEMENT_PROMPT = """你是 Drift MC 关卡设计师。根据 AI 玩家
 - 主要死因: {death_causes}
 - 卡点位置: {stuck_points}
 
+## 分技能评估
+- 新手通关率: {beginner_cr:.0%}
+- 中等通关率: {average_cr:.0%}（← Flow Zone 目标）
+- 高手通关率: {expert_cr:.0%}
+- 难度评估: {difficulty_assessment}
+
 ## 目标
 - 目标难度: D{target_difficulty}
 - 目标通关率: 60%-80%（Flow Zone）
