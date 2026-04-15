@@ -295,14 +295,23 @@ class MetaAgent:
         consecutive_failures = 0
         max_consecutive = 3
 
-        # 按技能级别分配局数
+        # 按技能级别分配局数（按 episodes_per_eval 等比例缩放）
         schedule = []
         if self.single_skill:
             # 单技能模式：所有局都用指定技能
             schedule = [self.single_skill] * self.episodes_per_eval
         else:
-            for skill, count in self.episodes_per_skill_map.items():
-                for _ in range(count):
+            total_default = sum(self.episodes_per_skill_map.values()) or 1
+            allocated = 0
+            skills = list(self.episodes_per_skill_map.items())
+            for i, (skill, count) in enumerate(skills):
+                if i == len(skills) - 1:
+                    # 最后一个技能：用剩余局数，确保总数精确
+                    n = self.episodes_per_eval - allocated
+                else:
+                    n = max(1, round(count / total_default * self.episodes_per_eval))
+                    allocated += n
+                for _ in range(n):
                     schedule.append(skill)
             random.shuffle(schedule)  # 打乱顺序，避免系统偏差
 

@@ -1811,6 +1811,10 @@ function startEvolutionPolling(sessionId) {
       const r = await GET('/evolution/status/' + sessionId)
       if (r.error) return
       updateEvolutionUI(r)
+      // Bug3 fix: Evolution 运行期间每 ~9s 自动刷新 STATE 面板
+      if (pollCount % 3 === 0 && typeof doRefreshState === 'function') {
+        try { doRefreshState() } catch (e) {}
+      }
       if (['completed', 'failed', 'stopped', 'error'].includes(r.status)) {
         clearInterval(_evoPollTimer); _evoPollTimer = null
         const ok = r.status === 'completed'
@@ -1903,6 +1907,22 @@ async function stopEvolution() {
   try { await POST('/evolution/stop/' + _evoSessionId, {}); toast('进化已停止', 'ok') }
   catch (e) { toast('停止失败: ' + e.message, 'err') }
 }
+
+// ─── 页面加载时自动恢复正在运行的 Evolution 会话 ───
+;(async function recoverEvolutionSession() {
+  try {
+    const r = await GET('/evolution/list')
+    const running = (r.sessions || []).find(s => s.status === 'running')
+    if (running) {
+      _evoSessionId = running.session_id
+      const p = running.params || {}
+      showEvolutionMonitor(running.session_id, p.difficulty || 3, p.episodes || 5, p.generations || 3)
+      startEvolutionPolling(running.session_id)
+      $('injectBadge').textContent = '🧬 evo #' + running.session_id
+      toast('🧬 已恢复进化会话 #' + running.session_id, 'ok')
+    }
+  } catch (e) { /* 静默：后端不可达时不影响面板 */ }
+})()
 </script>
 </body>
 </html>
