@@ -39,13 +39,20 @@ class MetaAgent:
         drift_url: str = "http://35.201.132.58:8000",
         config_path: Optional[str] = None,
         single_skill: Optional[str] = None,
+        status_file: Optional[str] = None,
     ):
         self.designer = designer
         self.bot_host = bot_host
         self.bot_port = bot_port
         self.drift_url = drift_url
         self.single_skill = single_skill
+        self.status_file = status_file
         self.logger = EvolutionLog()
+
+        # 进化状态追踪（供 _write_status 使用）
+        self._current_gen: int = -1
+        self._current_design: str = ""
+        self._history: list = []
 
         # 加载配置
         self._load_config(config_path)
@@ -53,6 +60,17 @@ class MetaAgent:
         # 加载技能档案（供 run_evolution 打印摘要使用）
         self.skill_profiles = load_skill_profiles()
         self.episodes_per_skill_map = load_episodes_per_skill()
+
+    def _write_status(self, data: dict):
+        """写入状态文件供面板轮询（无 status_file 时静默跳过）"""
+        if not self.status_file:
+            return
+        try:
+            import json
+            with open(self.status_file, "w") as f:
+                json.dump(data, f, ensure_ascii=False, default=str)
+        except Exception:
+            pass
 
     def _load_config(self, config_path: Optional[str]):
         """加载进化参数"""
@@ -95,6 +113,7 @@ class MetaAgent:
         current_design = initial_design
         current_level_id = level_id
         flow_zone_streak = 0
+        history: list = []
 
         print(f"\n{'#' * 70}")
         print(f"# Drift RL Agent — 双环自进化系统（StrategyBot）")
@@ -109,6 +128,22 @@ class MetaAgent:
             print(f"\n{'=' * 60}")
             print(f" Generation {gen}")
             print(f"{'=' * 60}")
+
+            # 更新追踪属性，供 _run_player_episodes 中写状态使用
+            self._current_gen = gen
+            self._current_design = current_design
+            self._history = history
+
+            self._write_status({
+                "status": "running",
+                "current_phase": "playing",
+                "generation": gen,
+                "total_generations": self.max_generations,
+                "episode": 0,
+                "total_episodes": self.episodes_per_eval,
+                "design_text": current_design,
+                "history": history,
+            })
 
             # ─── 内环：StrategyBot 游玩 N 局 ───
             print(f"\n[Player] 开始游玩 {self.episodes_per_eval} 局（多技能级别）...")
@@ -127,6 +162,26 @@ class MetaAgent:
             print(f"[Eval] 难度评估: {eval_report.get('difficulty_assessment', '—')}")
             print(f"[Eval] 评估报告:\n{format_multi_skill_eval(eval_report)}")
 
+            # 追加历史记录
+            history.append({"generation": gen, "completion_rate": cr, "avg_cr": avg_cr})
+            self._history = history
+
+            self._write_status({
+                "status": "running",
+                "current_phase": "evaluating",
+                "generation": gen,
+                "total_generations": self.max_generations,
+                "completion_rate": cr,
+                "flow_zone": self.flow_zone_min <= avg_cr <= self.flow_zone_max,
+                "flow_zone_streak": flow_zone_streak + (
+                    1 if self.flow_zone_min <= avg_cr <= self.flow_zone_max else 0
+                ),
+                "skill_results": eval_report.get("completion_by_skill", {}),
+                "difficulty_assessment": eval_report.get("difficulty_assessment", ""),
+                "design_text": current_design,
+                "history": history,
+            })
+
             # 检查 Flow Zone（以 average 技能通关率为基准）
             if self.flow_zone_min <= avg_cr <= self.flow_zone_max:
                 flow_zone_streak += 1
@@ -134,6 +189,16 @@ class MetaAgent:
                 if flow_zone_streak >= self.flow_zone_streak_target:
                     print(f"\n[Meta] 达到稳定 Flow Zone，进化完成！")
                     self.logger.log_generation(gen, current_design, eval_report)
+                    self._write_status({
+                        "status": "completed",
+                        "generation": gen,
+                        "total_generations": gen + 1,
+                        "completion_rate": cr,
+                        "flow_zone": True,
+                        "flow_zone_streak": flow_zone_streak,
+                        "design_text": current_design,
+                        "history": history,
+                    })
                     break
             else:
                 flow_zone_streak = 0
@@ -142,6 +207,15 @@ class MetaAgent:
 
             # ─── 外环：DesignerAgent 改进关卡 ───
             print(f"\n[Designer] 正在用 LLM 改进关卡设计...")
+            self._write_status({
+                "status": "running",
+                "current_phase": "designing",
+                "generation": gen,
+                "total_generations": self.max_generations,
+                "completion_rate": cr,
+                "design_text": current_design,
+                "history": history,
+            })
             new_design = self.designer.generate_improved_design(
                 current_design, eval_report, target_difficulty
             )
@@ -151,6 +225,15 @@ class MetaAgent:
             # 发布到 Drift
             new_level_id = f"{level_id.split('_gen')[0]}_gen{gen + 1}"
             print(f"\n[Designer] 发布新关卡: {new_level_id}")
+            self._write_status({
+                "status": "running",
+                "current_phase": "publishing",
+                "generation": gen,
+                "total_generations": self.max_generations,
+                "new_design": new_design.get("design_text", ""),
+                "design_text": current_design,
+                "history": history,
+            })
             publish_result = self.designer.publish_to_drift(
                 new_design, new_level_id, player_id,
                 use_premium=use_premium,
@@ -187,6 +270,18 @@ class MetaAgent:
         print(f" 是否在 Flow Zone: {summary.get('in_flow_zone', False)}")
         print(f" 日志: {log_path}")
         print(f"{'=' * 60}")
+
+        # 如果 Flow Zone break 时未写 completed（超代上限退出），补写一次
+        self._write_status({
+            "status": "completed",
+            "generation": self._current_gen,
+            "total_generations": self._current_gen + 1,
+            "completion_rate": summary.get("final_completion_rate", 0),
+            "flow_zone": summary.get("in_flow_zone", False),
+            "design_text": current_design,
+            "history": history,
+            "summary": summary,
+        })
 
         return summary
 
@@ -230,6 +325,18 @@ class MetaAgent:
                 print(f"  Episode {ep + 1}/{len(schedule)} [{skill}]: {status} "
                       f"({result['time']:.0f}s, {result['deaths']} deaths, "
                       f"explore={result['exploration']})")
+
+                # 每局结束写状态文件
+                self._write_status({
+                    "status": "running",
+                    "current_phase": "playing",
+                    "generation": self._current_gen,
+                    "total_generations": self.max_generations,
+                    "episode": ep + 1,
+                    "total_episodes": len(schedule),
+                    "design_text": self._current_design,
+                    "history": self._history,
+                })
 
             except Exception as e:
                 consecutive_failures += 1

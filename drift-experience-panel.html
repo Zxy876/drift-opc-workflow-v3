@@ -524,6 +524,27 @@ textarea { min-height: 80px; }
           <span class="pm-label">Premium</span>
           <span class="pm-desc">Beam Search + 叙事弧</span>
         </div>
+        <div class="publish-mode" data-mode="evolution" onclick="selectPublishMode('evolution')">
+          <span class="pm-icon">🧬</span>
+          <span class="pm-label">Evolution</span>
+          <span class="pm-desc">RL Agent 自进化</span>
+        </div>
+      </div>
+      <div id="evoParams" style="display:none;margin-bottom:6px">
+        <div class="row">
+          <div>
+            <label>难度 (1-5)</label>
+            <input type="text" id="evoDifficulty" value="3" style="text-align:center" />
+          </div>
+          <div>
+            <label>每代局数</label>
+            <input type="text" id="evoEpisodes" value="5" style="text-align:center" />
+          </div>
+          <div>
+            <label>最大代数</label>
+            <input type="text" id="evoGenerations" value="3" style="text-align:center" />
+          </div>
+        </div>
       </div>
       <button class="btn btn-green btn-publish" id="btnPublish" onclick="doPublish()">🚀 Publish to Minecraft</button>
       <div style="display:flex;gap:6px;margin-top:4px">
@@ -714,8 +735,16 @@ function selectPublishMode(mode) {
     el.classList.toggle('selected', el.dataset.mode === mode)
   })
   // Update publish button text
-  const labels = { quick: '⚡ Quick Publish', standard: '⚙ Standard Publish (AsyncAIFlow)', premium: '🧠 Premium Publish (Beam Search)' }
+  const labels = {
+    quick: '⚡ Quick Publish',
+    standard: '⚙ Standard Publish (AsyncAIFlow)',
+    premium: '🧠 Premium Publish (Beam Search)',
+    evolution: '🧬 Start Evolution (RL Agent)',
+  }
   $('btnPublish').textContent = labels[mode] || '🚀 Publish to Minecraft'
+  // 显示/隐藏 Evolution 参数区域
+  const evoParams = $('evoParams')
+  if (evoParams) evoParams.style.display = mode === 'evolution' ? 'block' : 'none'
 }
 
 /* ─────────────────────────────────────────────────────────────────
@@ -1063,6 +1092,10 @@ async function doPublish() {
   }
   if (_publishMode === 'premium') {
     await doPublishAsyncAIFlow(btn, text, levelId, playerId, 5)
+    return
+  }
+  if (_publishMode === 'evolution') {
+    await doStartEvolution(btn, text, levelId, playerId)
     return
   }
 
@@ -1686,6 +1719,190 @@ window.addEventListener('DOMContentLoaded', () => {
     $('designText').value = '玩家需要收集三块宝石才能解锁神庙大门。靠近祭坛可以获得奖励。被守卫发现则失败。限时60秒完成任务。'
   }
 })
+</script>
+
+<script>
+/* ─────────────────────────────────────────────────────────────────
+   Evolution Mode: RL Agent 自进化
+──────────────────────────────────────────────────────────────── */
+let _evoSessionId = null
+let _evoPollTimer = null
+
+async function doStartEvolution(btn, text, levelId, playerId) {
+  await withSpin(btn, async () => {
+    const difficulty   = parseInt($('evoDifficulty').value   || '3')
+    const episodes     = parseInt($('evoEpisodes').value     || '5')
+    const generations  = parseInt($('evoGenerations').value  || '3')
+
+    const body = { design: text, level_id: levelId, player_id: playerId, difficulty, episodes, generations }
+    const r = await POST('/evolution/start', body)
+    if (r.error) throw new Error(r.error)
+
+    _evoSessionId = r.session_id
+    $('injectBadge').textContent = '🧬 evo #' + r.session_id
+
+    showEvolutionMonitor(r.session_id, difficulty, episodes, generations)
+    startEvolutionPolling(r.session_id)
+
+    const el = $('injectResult')
+    el.className = 'result-block'
+    el.innerHTML = kv('status', 'evolution started', 'green')
+      + kv('session_id', esc(r.session_id), 'cyan')
+      + kv('difficulty', 'D' + difficulty, 'purple')
+      + kv('episodes', String(episodes))
+      + kv('generations', String(generations))
+
+    toast(`🧬 Evolution #${r.session_id} 已启动！`, 'ok')
+    setWorkflowStep(4)
+  }).catch(e => { toast('Evolution 启动失败: ' + e.message, 'err') })
+}
+
+function showEvolutionMonitor(sessionId, difficulty, episodes, generations) {
+  const monitor = $('wfMonitor')
+  monitor.style.display = 'block'
+  $('wfIdLabel').textContent = '🧬 #' + sessionId
+  $('wfStatusDot').className = 'wf-status-dot running'
+  $('wfStatusLabel').textContent = 'STARTING'
+  $('wfStatusLabel').style.color = 'var(--blue)'
+
+  // 构建进化 pipeline 步骤
+  const steps = []
+  for (let g = 0; g < generations; g++) {
+    steps.push('G' + g + ' Play')
+    steps.push('G' + g + ' Eval')
+    if (g < generations - 1) steps.push('G' + g + ' Design')
+  }
+  $('wfPipeline').innerHTML = steps.map((s, i) =>
+    `<span class="wf-pip-step" id="evoPip${i}">${s}</span>`
+  ).join('')
+
+  $('wfWorldPatch').style.display = 'block'
+  $('wfWorldPatch').innerHTML = `
+    <div id="evoProgress" style="font-size:11px;line-height:1.6">
+      <div>Generation: <span id="evoGen" style="color:var(--blue);font-weight:700">0</span> / ${generations}</div>
+      <div>Episode: <span id="evoEp" style="color:var(--cyan)">0</span> / ${episodes}</div>
+      <div>Phase: <span id="evoPhase" style="color:var(--purple)">starting</span></div>
+      <div>Completion Rate: <span id="evoCR" style="font-weight:700">—</span></div>
+      <div>Flow Zone: <span id="evoFZ" style="font-weight:700">—</span></div>
+      <div style="margin-top:4px">
+        <div style="height:8px;background:#21262d;border-radius:4px;overflow:hidden">
+          <div id="evoCRBar" style="height:100%;width:0%;background:var(--blue);transition:width 0.4s"></div>
+        </div>
+      </div>
+      <div id="evoSkills" style="margin-top:4px;font-size:10px;color:var(--text-dim)"></div>
+      <div id="evoDesign" style="margin-top:4px;font-size:10px;color:var(--text-dim);max-height:60px;overflow:auto"></div>
+    </div>`
+}
+
+function startEvolutionPolling(sessionId) {
+  if (_evoPollTimer) clearInterval(_evoPollTimer)
+  let pollCount = 0
+  const maxPolls = 600  // ~30 min max
+
+  _evoPollTimer = setInterval(async () => {
+    pollCount++
+    if (pollCount > maxPolls) {
+      clearInterval(_evoPollTimer); _evoPollTimer = null
+      $('wfStatusLabel').textContent = 'TIMEOUT'
+      $('wfStatusLabel').style.color = 'var(--red)'
+      return
+    }
+    try {
+      const r = await GET('/evolution/status/' + sessionId)
+      if (r.error) return
+      updateEvolutionUI(r)
+      if (['completed', 'failed', 'stopped', 'error'].includes(r.status)) {
+        clearInterval(_evoPollTimer); _evoPollTimer = null
+        const ok = r.status === 'completed'
+        $('wfStatusDot').className = 'wf-status-dot ' + (ok ? 'completed' : 'failed')
+        $('wfStatusLabel').textContent = r.status.toUpperCase()
+        $('wfStatusLabel').style.color = ok ? 'var(--green)' : 'var(--red)'
+        $('injectBadge').textContent = ok ? '🧬 ✓ evolved' : '🧬 ✗ ' + r.status
+        document.querySelectorAll('.wf-pip-step').forEach(el => {
+          el.classList.add(ok ? 'wf-done' : 'wf-failed')
+        })
+        toast(ok
+          ? `🧬 Evolution 完成！最终通关率: ${((r.completion_rate || 0) * 100).toFixed(0)}%`
+          : `🧬 Evolution ${r.status}`,
+          ok ? 'ok' : 'err')
+        if (r.evolution_log) showEvolutionResults(r.evolution_log)
+      }
+    } catch (e) { /* 静默重试 */ }
+  }, 3000)
+}
+
+function updateEvolutionUI(r) {
+  const gen      = r.generation ?? 0
+  const ep       = r.episode ?? 0
+  const totalEp  = r.total_episodes ?? 1
+  const phase    = r.current_phase || r.status || '—'
+  const cr       = r.completion_rate
+  const fz       = r.flow_zone
+
+  $('wfStatusLabel').textContent = phase.toUpperCase()
+
+  const genEl = $('evoGen'), epEl = $('evoEp'), phaseEl = $('evoPhase')
+  const crEl  = $('evoCR'),  fzEl = $('evoFZ')
+
+  if (genEl)   genEl.textContent   = gen
+  if (epEl)    epEl.textContent    = ep + ' / ' + totalEp
+  if (phaseEl) {
+    phaseEl.textContent = phase
+    const colors = { playing: 'var(--blue)', evaluating: 'var(--yellow)', designing: 'var(--purple)', publishing: 'var(--cyan)' }
+    phaseEl.style.color = colors[phase] || 'var(--text-dim)'
+  }
+  if (cr != null && crEl) {
+    const pct = (cr * 100).toFixed(0)
+    crEl.textContent = pct + '%'
+    crEl.style.color = fz ? 'var(--green)' : cr < 0.6 ? 'var(--red)' : 'var(--yellow)'
+    const bar = $('evoCRBar')
+    if (bar) { bar.style.width = pct + '%'; bar.style.background = fz ? 'var(--green)' : cr < 0.6 ? 'var(--red)' : 'var(--yellow)' }
+  }
+  if (fz != null && fzEl) { fzEl.textContent = fz ? 'YES ✓' : 'NO'; fzEl.style.color = fz ? 'var(--green)' : 'var(--red)' }
+
+  const skills = r.skill_results || {}
+  const skillsEl = $('evoSkills')
+  if (skillsEl && Object.keys(skills).length)
+    skillsEl.innerHTML = Object.entries(skills).map(([k, v]) => `${k}: ${(v * 100).toFixed(0)}%`).join(' · ')
+
+  const designEl = $('evoDesign')
+  if (designEl && r.design_text) designEl.textContent = '📝 ' + r.design_text.slice(0, 200)
+
+  // 高亮 pipeline 步骤（每代 3 步: Play=0, Eval=1, Design/Publishing=2）
+  const phaseIdx = { playing: 0, evaluating: 1, designing: 2, publishing: 2 }[phase] ?? 0
+  const stepIdx  = gen * 3 + phaseIdx
+  document.querySelectorAll('.wf-pip-step').forEach((el, i) => {
+    el.classList.remove('wf-done', 'wf-running')
+    if (i < stepIdx) el.classList.add('wf-done')
+    else if (i === stepIdx) el.classList.add('wf-running')
+  })
+}
+
+function showEvolutionResults(log) {
+  const gens = log.generations || []
+  if (!gens.length) return
+  const summary = log.summary || {}
+  let html = `<div style="margin-top:6px"><div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:4px">🧬 进化完成</div>`
+  html += kv('总代数', String(summary.total_generations || gens.length), 'blue')
+  html += kv('最终通关率', ((summary.final_completion_rate || 0) * 100).toFixed(0) + '%', summary.in_flow_zone ? 'green' : 'red')
+  html += kv('Flow Zone', summary.in_flow_zone ? 'YES' : 'NO', summary.in_flow_zone ? 'green' : 'red')
+  html += `<div style="margin-top:6px;font-size:10px;color:var(--text-dim)">通关率趋势:</div>`
+  html += `<div style="display:flex;align-items:end;gap:3px;height:40px;margin-top:2px">`
+  for (const g of gens) {
+    const cr = g.eval?.completion_rate || 0
+    const h  = Math.max(2, cr * 40)
+    const c  = (cr >= 0.6 && cr <= 0.8) ? 'var(--green)' : cr < 0.6 ? 'var(--red)' : 'var(--yellow)'
+    html += `<div style="width:20px;height:${h}px;background:${c};border-radius:2px" title="G${g.generation}: ${(cr*100).toFixed(0)}%"></div>`
+  }
+  html += `</div></div>`
+  const el = $('injectResult'); el.className = 'result-block'; el.innerHTML = html
+}
+
+async function stopEvolution() {
+  if (!_evoSessionId) return
+  try { await POST('/evolution/stop/' + _evoSessionId, {}); toast('进化已停止', 'ok') }
+  catch (e) { toast('停止失败: ' + e.message, 'err') }
+}
 </script>
 </body>
 </html>

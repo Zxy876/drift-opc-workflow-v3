@@ -15,6 +15,7 @@ from app.routers import ai_router
 from app.routers.minimap import router as minimap_router
 from app.api.minimap_api import router as minimap_png_router
 from app.api.experience_api import router as experience_router
+from app.api.evolution_api import router as evolution_router
 
 # Core
 from app.core.story.story_loader import list_levels, load_level
@@ -53,6 +54,7 @@ app.include_router(ai_router.router,   tags=["AI"])
 app.include_router(minimap_router,     tags=["MiniMap"])
 app.include_router(minimap_png_router, tags=["MiniMapPNG"])
 app.include_router(experience_router,  tags=["Experience"])
+app.include_router(evolution_router,   tags=["Evolution"])
 
 
 # -----------------------------

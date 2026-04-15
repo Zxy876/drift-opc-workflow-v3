@@ -48,6 +48,8 @@ def main():
                         help="单一技能级别（默认: 多级别评估）")
     parser.add_argument("--player-id", type=str, default="DriftRLAgent",
                         help="玩家 ID（发送给 Drift 后端和 Bot）")
+    parser.add_argument("--status-file", type=str, default=None,
+                        help="实时写入进化进度的 JSON 文件路径（供面板轮询）")
     args = parser.parse_args()
 
     import signal
@@ -82,6 +84,7 @@ def main():
         bot_port=args.bot_port,
         drift_url=args.drift_url,
         single_skill=args.skill,
+        status_file=args.status_file,
     )
 
     # 覆盖配置参数
