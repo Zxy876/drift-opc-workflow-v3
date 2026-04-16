@@ -227,7 +227,10 @@ class MetaAgent:
                 print(f"\n[Meta] ✗ 未在 Flow Zone (中等玩家通关率{direction})")
 
             # ─── 外环：DesignerAgent 改进关卡 ───
-            print(f"\n[Designer] 正在用 LLM 改进关卡设计...")
+            # 接近 Flow Zone 时标记为微调模式，优先用确定性规则而非 LLM
+            if 0.5 <= avg_cr <= 0.9:
+                eval_report["fine_tune_mode"] = True
+            print(f"\n[Designer] 正在改进关卡设计（CR={avg_cr:.0%}, 微调={eval_report.get('fine_tune_mode', False)}）...")
             self._write_status({
                 "status": "running",
                 "current_phase": "designing",

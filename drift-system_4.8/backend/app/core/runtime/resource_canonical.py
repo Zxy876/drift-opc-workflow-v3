@@ -4,9 +4,42 @@ from typing import Any
 
 
 _DIRECT_RESOURCE_ALIASES = {
+    # 食物
     "porkchop": "pork",
     "raw_porkchop": "pork",
     "cooked_porkchop": "pork",
+
+    # 中文→英文映射（LLM 设计文本用中文，MC 物品是英文）
+    "珍珠": "ender_pearl",
+    "末影珍珠": "ender_pearl",
+    "宝石": "emerald",
+    "绿宝石": "emerald",
+    "钻石": "diamond",
+    "金锭": "gold_ingot",
+    "铁锭": "iron_ingot",
+    "钥匙": "tripwire_hook",
+    "符文": "nether_star",
+    "下界之星": "nether_star",
+    "荧石粉": "glowstone_dust",
+    "海晶碎片": "prismarine_shard",
+    "书": "book",
+    "书本": "book",
+    "弓箭": "bow",
+    "弓": "bow",
+    "盔甲": "iron_chestplate",
+    "木头": "wood",
+    "原木": "wood",
+    "火把": "torch",
+
+    # MC ID 变体（确保内部键也能归一化）
+    "ender_pearl": "ender_pearl",
+    "prismarine_shard": "prismarine_shard",
+    "glowstone_dust": "glowstone_dust",
+    "nether_star": "nether_star",
+    "tripwire_hook": "tripwire_hook",
+    "gold_ingot": "gold_ingot",
+    "iron_ingot": "iron_ingot",
+    "iron_chestplate": "iron_chestplate",
 }
 
 

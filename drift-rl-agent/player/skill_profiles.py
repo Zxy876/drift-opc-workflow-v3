@@ -20,9 +20,10 @@ DEFAULT_PROFILES: dict[str, dict[str, Any]] = {
         "flee_health_threshold": 6,  # 血量低于此值时逃跑
         "stuck_patience": 60,        # 连续多少 tick 没移动才判定卡住
         "use_easy_probability": 0.3, # 卡住/死亡后使用 /easy 的概率
-        "use_pathfinder": False,     # 是否使用 pathfinder（新手不会）
+        "use_pathfinder": True,      # 新手也应该会走路
         "npc_interact_delay": 15,    # 看到 NPC 后多少 tick 才交互
-        "collect_item_dist": 3.0,    # 多近才会去捡物品
+        "collect_item_dist": 5.0,    # 多近才会去捡物品（扩大到 5.0）
+        "goal_awareness": 0.3,       # 30% 概率按目标行动
     },
     "average": {
         "reaction_ticks": 5,
@@ -34,6 +35,7 @@ DEFAULT_PROFILES: dict[str, dict[str, Any]] = {
         "use_pathfinder": True,
         "npc_interact_delay": 5,
         "collect_item_dist": 5.0,
+        "goal_awareness": 0.7,       # 70% 概率按目标行动
     },
     "expert": {
         "reaction_ticks": 2,
@@ -45,6 +47,7 @@ DEFAULT_PROFILES: dict[str, dict[str, Any]] = {
         "use_pathfinder": True,
         "npc_interact_delay": 2,
         "collect_item_dist": 8.0,
+        "goal_awareness": 1.0,       # 100% 按目标行动
     },
 }
 

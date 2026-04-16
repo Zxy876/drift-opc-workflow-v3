@@ -140,6 +140,32 @@ def analyze_multi_skill_data(play_results: list) -> dict:
         "difficulty_assessment": assessment,
     })
 
+    # 生成确定性改进建议（不依赖 LLM 判断方向）
+    adjustment_hints = []
+    avg_cr = base_report.get("completion_rate", 0.0)
+    if avg_cr < 0.4:
+        adjustment_hints.append("REDUCE_DIFFICULTY_LARGE")
+        if base_report.get("avg_deaths", 0) > 2:
+            adjustment_hints.append("REDUCE_COMBAT")
+        if base_report.get("easy_usage_rate", 0) > 0.3:
+            adjustment_hints.append("ADD_SUPPLIES")
+    elif avg_cr < 0.6:
+        adjustment_hints.append("REDUCE_DIFFICULTY_SMALL")
+    elif avg_cr > 0.95:
+        adjustment_hints.append("INCREASE_DIFFICULTY_LARGE")
+    elif avg_cr > 0.8:
+        adjustment_hints.append("INCREASE_DIFFICULTY_SMALL")
+
+    death_causes = base_report.get("death_causes", {})
+    if death_causes.get("fall_damage", 0) > 2:
+        adjustment_hints.append("REDUCE_FALL_HAZARDS")
+    if death_causes.get("killed_by_mob", 0) > 2:
+        adjustment_hints.append("REDUCE_MOB_COUNT")
+    if death_causes.get("drowning", 0) > 1:
+        adjustment_hints.append("REDUCE_WATER_HAZARDS")
+
+    base_report["adjustment_hints"] = adjustment_hints
+
     return base_report
 
 

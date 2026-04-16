@@ -15,8 +15,11 @@ StrategyBot — 分层决策引擎
 
 import math
 import random
+import re
 import time
 from typing import Any, Optional
+
+import requests
 
 from bot_client import BotClient
 from skill_profiles import get_profile, DEFAULT_PROFILES
@@ -57,6 +60,12 @@ class StrategyBot:
         self.level_completed = False
         self.reaction_cooldown = 0  # 反应延迟计数器
 
+        # 关卡目标（从 Drift 后端获取）
+        self.level_goals: list[dict] = []
+        self.goal_positions: list[tuple[float, float, float]] = []
+        self.current_goal_idx: int = 0
+        self._drift_url: str = "http://35.201.132.58:8000"
+
     def reset(self):
         """重置一局的状态"""
         self.steps = 0
@@ -70,6 +79,9 @@ class StrategyBot:
         self.triggers_completed = 0
         self.level_completed = False
         self.reaction_cooldown = 0
+        self.level_goals = []
+        self.goal_positions = []
+        self.current_goal_idx = 0
 
         # BUG-C: 预检—先确认 Bot 已连接（最多 30 秒）
         for i in range(30):
@@ -93,8 +105,11 @@ class StrategyBot:
             state = self.client.get_state()
             if state.get("error") != "bot_not_ready":
                 print(f"    [{self.skill_name}] 关卡已加载 (等待 {i + 1}s)")
+                # 加载完成后获取关卡目标
+                self._fetch_level_goals(self.level_id, self.player_id)
                 return state
         print(f"    [{self.skill_name}] 警告: 关卡加载超时 (15s)，继续执行")
+        self._fetch_level_goals(self.level_id, self.player_id)
         return self.client.get_state()
 
     def play_episode(self) -> dict:
@@ -233,7 +248,20 @@ class StrategyBot:
             self._handle_combat(hostiles[0], pos)
             return
 
-        # ── 3. INTERACT: NPC 对话 ──
+        # ── 3. GOAL-DIRECTED: 根据关卡目标行动 ──
+        if self.level_goals and random.random() < self.profile.get("goal_awareness", 0.5):
+            goal = self.level_goals[self.current_goal_idx % len(self.level_goals)]
+            if goal["type"] == "collect":
+                target_items = self._find_goal_items(entities, goal["target"])
+                if target_items:
+                    self._handle_collect(target_items[0], pos)
+                    return
+            elif goal["type"] == "reach" and self.goal_positions:
+                tx, ty, tz = self.goal_positions[0]
+                self.client.navigate_to(tx, ty, tz)
+                return
+
+        # ── 4. INTERACT: NPC 对话 ──
         npcs = [
             e for e in entities
             if e.get("type") == "player"
@@ -244,27 +272,21 @@ class StrategyBot:
             self._handle_npc(npcs[0], pos)
             return
 
-        # ── 4. COLLECT: 收集附近物品 ──
-        # BUG-E: 扩大 type 匹配范围，并支持 objectType/name 字段
+        # ── 5. COLLECT: 收集附近物品 ──
         items = [
             e for e in entities
-            if (e.get("type") in ("object", "item", "other")
-                or e.get("objectType") == "Item"
-                or e.get("name", "").lower() in (
-                    "item", "diamond", "emerald", "gold_ingot",
-                    "nether_star", "glowstone_dust", "prismarine_shard",
-                ))
+            if self._is_collectible(e)
             and self._entity_dist(e) < self.profile["collect_item_dist"]
         ]
         if items:
             self._handle_collect(items[0], pos)
             return
 
-        # ── 5. EXPLORE / IDLE ──
+        # ── 6. EXPLORE / IDLE ──
         if self.stuck_counter >= self.profile["stuck_patience"]:
             self._handle_stuck(state)
         else:
-            self._handle_explore(state)
+            self._handle_smart_explore(state)
 
     def _handle_danger(self, state: dict):
         """低血量：逃跑 / 吃食物 / 使用 /easy"""
@@ -343,12 +365,11 @@ class StrategyBot:
             self.client.execute_action({"move_forward": 1})
 
     def _handle_explore(self, state: dict):
-        """探索新区域"""
-        # 简单探索策略：沿当前朝向前进，偶尔转向
-        if random.random() < 0.1:  # 10% 概率随机转向
+        """随机探索（回退策略）"""
+        if random.random() < 0.1:
             self.client.execute_action({
                 "move_forward": 1,
-                "jump": 1 if random.random() < 0.15 else 0,  # 偶尔跳跃
+                "jump": 1 if random.random() < 0.15 else 0,
                 "look_delta": [random.uniform(-0.5, 0.5), 0],
             })
         else:
@@ -356,6 +377,140 @@ class StrategyBot:
                 "move_forward": 1,
                 "jump": 1 if random.random() < 0.05 else 0,
             })
+
+    def _handle_smart_explore(self, state: dict):
+        """智能探索：优先向未访问区域或目标坐标移动"""
+        pos = state.get("position", [0, 0, 0])
+        pos = [p if isinstance(p, (int, float)) else 0 for p in pos]
+
+        # 策略1: 如果有目标坐标，导航过去
+        if self.goal_positions and self.profile.get("use_pathfinder", False):
+            target = self.goal_positions[self.current_goal_idx % len(self.goal_positions)]
+            self.client.navigate_to(target[0], target[1], target[2])
+            return
+
+        # 策略2: 向最少访问的方向移动
+        best_dir = self._find_least_visited_direction(pos)
+        if best_dir:
+            tx, ty, tz = best_dir
+            if self.profile.get("use_pathfinder", False):
+                self.client.navigate_to(tx, ty, tz)
+            else:
+                self.client.look_at(tx, ty, tz)
+                self.client.execute_action({"move_forward": 1, "sprint": 1})
+            return
+
+        # 策略3: 回退到随机探索
+        self._handle_explore(state)
+
+    def _find_least_visited_direction(self, pos: list) -> tuple | None:
+        """找到周围最少访问的方向（8个方向，步长10格）"""
+        best_pos = None
+        min_visits = float("inf")
+
+        for angle_deg in range(0, 360, 45):
+            angle = math.radians(angle_deg)
+            tx = pos[0] + 10 * math.cos(angle)
+            tz = pos[2] + 10 * math.sin(angle)
+            grid = (int(tx) // 5, int(pos[1]) // 5, int(tz) // 5)
+            visit_count = 1 if grid in self.visited_positions else 0
+            if visit_count < min_visits:
+                min_visits = visit_count
+                best_pos = (tx, pos[1], tz)
+
+        return best_pos if min_visits == 0 else None
+
+    def _is_collectible(self, entity: dict) -> bool:
+        """判断实体是否为可收集物品（统一逻辑）"""
+        etype = entity.get("type", "")
+        obj_type = entity.get("objectType", "")
+        name = entity.get("name", "").lower()
+
+        if etype in ("object", "item", "other") or obj_type == "Item":
+            return True
+
+        collectible_keywords = {"item", "drop", "diamond", "emerald", "gold",
+                               "pearl", "star", "dust", "shard", "book", "ingot"}
+        if any(kw in name for kw in collectible_keywords):
+            return True
+
+        return False
+
+    def _find_goal_items(self, entities: list, target_name: str) -> list:
+        """在附近实体中查找匹配关卡目标的物品"""
+        try:
+            from item_mapping import mc_name_matches_goal
+            return [
+                e for e in entities
+                if self._is_collectible(e)
+                and mc_name_matches_goal(e.get("name", ""), target_name)
+            ]
+        except ImportError:
+            pass
+
+        # 回退：简单名称匹配
+        ITEM_ALIASES = {
+            "pearls": ["ender_pearl", "pearl", "prismarine_shard", "emerald"],
+            "pearl": ["ender_pearl", "pearl", "prismarine_shard", "emerald"],
+            "gems": ["diamond", "emerald", "prismarine_shard"],
+            "gem": ["diamond", "emerald", "prismarine_shard"],
+            "keys": ["tripwire_hook", "gold_ingot"],
+            "key": ["tripwire_hook", "gold_ingot"],
+            "runes": ["nether_star", "glowstone_dust", "book"],
+            "rune": ["nether_star", "glowstone_dust", "book"],
+        }
+        target_lower = target_name.lower().rstrip("s")
+        search_names = set(ITEM_ALIASES.get(target_lower, [target_lower]) +
+                           ITEM_ALIASES.get(target_name.lower(), []))
+        search_names.add(target_lower)
+        return [
+            e for e in entities
+            if self._is_collectible(e)
+            and any(alias in e.get("name", "").lower() for alias in search_names)
+        ]
+
+    def _fetch_level_goals(self, level_id: str, player_id: str):
+        """从 Drift 后端获取当前关卡的目标列表"""
+        try:
+            resp = requests.get(
+                f"{self._drift_url}/experience/state/{player_id}",
+                timeout=5,
+            )
+            if resp.ok:
+                data = resp.json()
+                rules = data.get("active_rules", [])
+                for rule in rules:
+                    goal = self._parse_rule_to_goal(rule)
+                    if goal:
+                        self.level_goals.append(goal)
+
+                timeline = data.get("timeline", [])
+                for event in timeline:
+                    s = event.get("state", {})
+                    if "npc_position" in s:
+                        p = s["npc_position"]
+                        self.goal_positions.append(
+                            (p.get("x", 0), p.get("y", 0), p.get("z", 0))
+                        )
+                if self.level_goals:
+                    print(f"    [{self.skill_name}] 获取关卡目标: {self.level_goals}")
+        except Exception as e:
+            print(f"    [{self.skill_name}] 获取关卡目标失败: {e}")
+
+    def _parse_rule_to_goal(self, rule: dict) -> dict | None:
+        """将 Drift 规则解析为 Bot 可理解的目标"""
+        condition = rule.get("condition", "")
+        rule_type = rule.get("type", "")
+
+        if rule_type == "win":
+            m = re.match(r"collected_(\w+)\s*>=\s*(\d+)", condition)
+            if m:
+                return {"type": "collect", "target": m.group(1), "count": int(m.group(2))}
+            m = re.match(r"reached_(\w+)\s*==\s*true", condition)
+            if m:
+                return {"type": "reach", "target": m.group(1)}
+
+        return None
 
     def _handle_stuck(self, state: dict):
         """处理卡住状态"""

@@ -79,9 +79,26 @@ class DesignerAgent:
         """
         用 LLM 根据评估报告生成改进后的关卡设计
 
+        优先使用确定性规则引擎（接近 Flow Zone 时），否则调 LLM。
         Returns: {"design_text": str, "difficulty": int, "reasoning": str, "changes": list}
         """
-        direction = "低" if eval_report["completion_rate"] < 0.6 else "高"
+        hints = eval_report.get("adjustment_hints", [])
+        avg_cr = eval_report.get("completion_rate", 0.0)
+        fine_tune_mode = 0.5 <= avg_cr <= 0.9
+
+        if fine_tune_mode and hints:
+            adjusted = self._apply_deterministic_adjustments(current_design, hints, target_difficulty)
+            if adjusted:
+                print(f"[Designer] 使用确定性调整（CR={avg_cr:.0%}）: {adjusted['changes']}")
+                self.design_history.append({
+                    "eval_report": eval_report,
+                    "old_design": current_design,
+                    "new_design": adjusted,
+                    "timestamp": time.time(),
+                })
+                return adjusted
+
+        direction = "低" if avg_cr < 0.6 else "高"
 
         prompt = LEVEL_IMPROVEMENT_PROMPT.format(
             current_design=current_design,
@@ -137,6 +154,49 @@ class DesignerAgent:
             "changes": [],
         }
 
+    def _apply_deterministic_adjustments(self, design_text: str, hints: list, difficulty: int) -> dict | None:
+        """确定性调整：根据规则引擎的提示直接修改设计文本中的数值，不调 LLM"""
+        import re
+        new_text = design_text
+        changes = []
+
+        for hint in hints:
+            if hint == "REDUCE_MOB_COUNT":
+                def halve_mob(m):
+                    n = max(1, int(m.group(1)) // 2)
+                    return f"{n} 个 {m.group(2)}"
+                new_text = re.sub(
+                    r"(\d+)\s*个\s*(怪物|僵尸|骷髅|蜘蛛|苦力怕)",
+                    halve_mob, new_text,
+                )
+                changes.append("怪物数量减半")
+
+            elif hint == "REDUCE_FALL_HAZARDS":
+                if "浮空" in new_text and "安全" not in new_text:
+                    new_text = new_text.replace("浮空", "低矮浮空（有安全网）")
+                    changes.append("降低坠落风险")
+
+            elif hint == "ADD_SUPPLIES":
+                if "生命药水" not in new_text:
+                    new_text += "\nNPC 补给兵在起点 赠送 3 个 生命药水"
+                    changes.append("增加补给NPC")
+
+            elif hint == "INCREASE_DIFFICULTY_SMALL":
+                def tighten_time(m):
+                    n = max(30, int(int(m.group(1)) * 0.8))
+                    return f"在 {n} 秒内"
+                new_text = re.sub(r"在\s*(\d+)\s*秒内", tighten_time, new_text)
+                changes.append("时间限制收紧20%")
+
+        if changes:
+            return {
+                "design_text": new_text,
+                "difficulty": difficulty,
+                "reasoning": f"确定性微调: {', '.join(changes)}",
+                "changes": changes,
+            }
+        return None
+
     def generate_new_level(
         self,
         target_difficulty: int = 3,
@@ -189,15 +249,18 @@ class DesignerAgent:
         """
         发布设计到 Drift 系统
 
-        Quick Publish: POST /story/inject（直接注入）
-        Premium Publish: POST /planner/execute（走 AsyncAIFlow 全链路）
+        默认使用 Quick Publish，Premium 失败时自动降级。
         """
         text = design["design_text"]
         difficulty = design.get("difficulty", 3)
         title = design.get("title", f"AI-Designed Level D{difficulty}")
 
         if use_premium and difficulty >= self.use_premium_threshold:
-            return self._publish_premium(text, level_id, player_id, difficulty)
+            try:
+                return self._publish_premium(text, level_id, player_id, difficulty)
+            except Exception as e:
+                print(f"[Designer] Premium 发布失败，降级到 Quick: {e}")
+                return self._publish_quick(text, level_id, player_id, title)
         else:
             return self._publish_quick(text, level_id, player_id, title)
 

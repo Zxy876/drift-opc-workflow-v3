@@ -95,6 +95,13 @@ function fetchDriftState() {
 async function getDriftState() {
   if (Date.now() - driftLastFetch > DRIFT_FETCH_INTERVAL) {
     await fetchDriftState()
+    // 从后端状态同步通关
+    if (driftStateCache.status === 'completed' && !levelCompleted) {
+      if (Date.now() - levelResetTime > 5000) {
+        levelCompleted = true
+        console.log('[Bot] 从 Drift 后端检测到通关')
+      }
+    }
   }
   return driftStateCache
 }
@@ -266,7 +273,7 @@ function getState() {
     time_of_day: bot.time?.timeOfDay || 0,
     is_raining: bot.isRaining,
     // Drift 特有事件
-    level_completed: levelCompleted,
+    level_completed: levelCompleted || (driftStateCache.status === 'completed'),
     triggers_completed: triggersCompleted,
     // R2: 读取后即刻清除，避免重复计入同一次死亡
     last_death_cause: (() => { const v = lastDeathCause; lastDeathCause = null; return v })(),
@@ -413,9 +420,38 @@ function handleCommand(cmd) {
       // 用 pathfinder 导航到指定坐标
       if (bot && botReady && cmd.x !== undefined) {
         const { GoalNear } = goals
-        bot.pathfinder.setGoal(new GoalNear(cmd.x, cmd.y, cmd.z, 1))
+        const range = cmd.range || 1
+        const timeout = cmd.timeout || 30000
+        bot.pathfinder.setGoal(new GoalNear(cmd.x, cmd.y, cmd.z, range))
+        // 超时后自动取消导航（防止 pathfinder 卡死）
+        setTimeout(() => {
+          try { if (bot && botReady) bot.pathfinder.setGoal(null) } catch (e) {}
+        }, timeout)
       }
       return { ok: true }
+
+    case 'collect_nearest':
+      // 查找最近的指定类型物品并走向它
+      if (bot && botReady && cmd.item_name) {
+        const itemName = cmd.item_name.toLowerCase()
+        const items = Object.values(bot.entities)
+          .filter(e => {
+            if (!e.position) return false
+            const name = (e.name || e.displayName || '').toLowerCase()
+            const objType = (e.objectType || '').toLowerCase()
+            return (objType === 'item' || e.type === 'object')
+              && (name.includes(itemName) || itemName.includes(name))
+          })
+          .sort((a, b) => bot.entity.position.distanceTo(a.position) - bot.entity.position.distanceTo(b.position))
+        if (items.length > 0) {
+          const target = items[0]
+          const { GoalNear } = goals
+          bot.pathfinder.setGoal(new GoalNear(target.position.x, target.position.y, target.position.z, 1))
+          return { ok: true, found: true, target: target.name, distance: +bot.entity.position.distanceTo(target.position).toFixed(2) }
+        }
+        return { ok: true, found: false }
+      }
+      return { ok: true, found: false }
 
     case 'stop_all':
       // 停止所有动作

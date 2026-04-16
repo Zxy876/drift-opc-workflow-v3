@@ -95,9 +95,13 @@ class BotClient:
         """重置关卡"""
         self.send({"type": "reset", "level_id": level_id})
 
-    def navigate_to(self, x: float, y: float, z: float):
+    def navigate_to(self, x: float, y: float, z: float, timeout: int = 30000):
         """Pathfinder 导航到指定坐标"""
-        self.send({"type": "navigate_to", "x": x, "y": y, "z": z})
+        self.send({"type": "navigate_to", "x": x, "y": y, "z": z, "timeout": timeout})
+
+    def collect_nearest(self, item_name: str) -> dict:
+        """让 Bot 走向并拾取最近的指定物品"""
+        return self.send({"type": "collect_nearest", "item_name": item_name})
 
     def look_at(self, x: float, y: float, z: float):
         """看向指定坐标"""
