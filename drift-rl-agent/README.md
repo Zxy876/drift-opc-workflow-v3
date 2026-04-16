@@ -99,7 +99,7 @@ node viewer/viewer_server.js
 
 ### AsyncAIFlow (35.201.132.58:8080)
 - `POST /planner/execute` — Premium Publish（AI 工作流全链路）
-- `GET /workflows/{id}` — 查询工作流状态
+- `GET /workflow/{id}` — 查询工作流状态
 
 ## TCP Bridge 协议
 

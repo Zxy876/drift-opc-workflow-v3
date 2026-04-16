@@ -181,7 +181,7 @@ public class AsyncAIFlowClient {
      */
     public String getWorkflowStatus(long workflowId) {
         Request request = new Request.Builder()
-                .url(baseUrl + "/workflows/" + workflowId)
+                .url(baseUrl + "/workflow/" + workflowId)
                 .get()
                 .build();
 
