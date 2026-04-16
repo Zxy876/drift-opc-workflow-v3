@@ -660,6 +660,7 @@ textarea { min-height: 80px; }
       <div style="display:flex;gap:6px;align-items:center">
         <span class="panel-badge" id="stateBadge">—</span>
         <button class="btn btn-sm btn-cyan" onclick="doRefreshState()" style="padding:2px 8px;font-size:10px;">↻ Refresh</button>
+        <button class="btn btn-sm" onclick="doResetState()" style="padding:2px 8px;font-size:10px;background:var(--red);color:#fff" title="清除该玩家的 experience state 和 debug 记录">⟲ Reset</button>
       </div>
     </div>
     <div class="panel-body">
@@ -760,6 +761,7 @@ function renderKV(obj, colorMap = {}) {
 }
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;')
 }
 
 /* ─── Health check ─────────────────────────────────────────────── */
@@ -825,61 +827,62 @@ function selectPublishMode(mode) {
 }
 
 /* ─────────────────────────────────────────────────────────────────
-   ① Design: Preview
+   ① Design: Preview (共享核心逻辑 + 包装函数)
 ───────────────────────────────────────────────────────────────── */
+async function _doPreviewCore(text) {
+  const r = await POST('/experience/preview', { text })
+  const ds = r.design_spec
+  const es = r.experience_spec_summary
+
+  $('designBadge').textContent = `${ds.triggers.length} triggers`
+
+  $('scoreArea').style.display = 'block'
+  const scoreVal = r.completeness_score != null ? r.completeness_score : (es.is_empty ? 0 : 0.9)
+  renderScore(scoreVal)
+
+  if (r.warnings.length) {
+    $('issuesArea').style.display = 'block'
+    $('issuesList').innerHTML = r.warnings.map(w =>
+      `<div class="issue-item">${esc(w)}</div>`
+    ).join('')
+  } else {
+    $('issuesArea').style.display = 'none'
+  }
+
+  let html = ''
+  html += kv('goal', esc(ds.goal || '—'), 'blue')
+  html += kv('win_condition', esc(ds.win_condition || '—'), ds.win_condition ? 'green' : 'red')
+  html += kv('lose_condition', esc(ds.lose_condition || '—'), ds.lose_condition ? 'yellow' : '')
+  html += kv('time_limit', ds.time_limit != null ? ds.time_limit + 's' : '—')
+
+  html += `<div style="margin:6px 0 3px"><span class="k">triggers:</span></div>`
+  html += `<div class="chip-list">`
+  for (const t of ds.triggers) {
+    html += `<span class="chip ${esc(t.trigger_type)}" title="${esc(t.action)}">[${esc(t.trigger_type)}] ${esc(t.event)}</span>`
+  }
+  if (!ds.triggers.length) html += `<span class="chip" style="color:var(--red)">none</span>`
+  html += `</div>`
+
+  html += `<div style="margin:6px 0 3px"><span class="k">state_vars:</span></div>`
+  for (const [k, v] of Object.entries(ds.state_vars || {})) {
+    html += kv(esc(k), esc(String(v)))
+  }
+  if (!Object.keys(ds.state_vars || {}).length) html += `<span style="color:var(--red)">no state</span>`
+
+  const el = $('designResult')
+  el.className = 'result-block'
+  el.innerHTML = html
+  setWorkflowStep(2)
+  return r
+}
+
 async function doPreview() {
   const btn = event.target
   const text = $('designText').value.trim()
   if (!text) { toast('请输入设计描述', 'err'); return }
   await withSpin(btn, async () => {
-    const r = await POST('/experience/preview', { text })
-    const ds = r.design_spec
-    const es = r.experience_spec_summary
-
-    // Badge
-    $('designBadge').textContent = `${ds.triggers.length} triggers`
-
-    // Score (real completeness_score from backend, fallback to heuristic)
-    $('scoreArea').style.display = 'block'
-    const scoreVal = r.completeness_score != null ? r.completeness_score : (es.is_empty ? 0 : 0.9)
-    renderScore(scoreVal)
-
-    // Issues
-    if (r.warnings.length) {
-      $('issuesArea').style.display = 'block'
-      $('issuesList').innerHTML = r.warnings.map(w =>
-        `<div class="issue-item">${esc(w)}</div>`
-      ).join('')
-    } else {
-      $('issuesArea').style.display = 'none'
-    }
-
-    // Result
-    let html = ''
-    html += kv('goal', esc(ds.goal || '—'), 'blue')
-    html += kv('win_condition', esc(ds.win_condition || '—'), ds.win_condition ? 'green' : 'red')
-    html += kv('lose_condition', esc(ds.lose_condition || '—'), ds.lose_condition ? 'yellow' : '')
-    html += kv('time_limit', ds.time_limit != null ? ds.time_limit + 's' : '—')
-
-    html += `<div style="margin:6px 0 3px"><span class="k">triggers:</span></div>`
-    html += `<div class="chip-list">`
-    for (const t of ds.triggers) {
-      html += `<span class="chip ${esc(t.trigger_type)}" title="${esc(t.action)}">[${esc(t.trigger_type)}] ${esc(t.event)}</span>`
-    }
-    if (!ds.triggers.length) html += `<span class="chip" style="color:var(--red)">none</span>`
-    html += `</div>`
-
-    html += `<div style="margin:6px 0 3px"><span class="k">state_vars:</span></div>`
-    for (const [k, v] of Object.entries(ds.state_vars || {})) {
-      html += kv(esc(k), esc(String(v)))
-    }
-    if (!Object.keys(ds.state_vars || {}).length) html += `<span style="color:var(--red)">no state</span>`
-
-    const el = $('designResult')
-    el.className = 'result-block'
-    el.innerHTML = html
+    await _doPreviewCore(text)
     toast('Preview 完成', 'ok')
-    setWorkflowStep(2)
   }).catch(e => { toast('Preview 失败: ' + e.message, 'err') })
 }
 
@@ -1598,6 +1601,31 @@ async function doRefreshState() {
 }
 
 /* ─────────────────────────────────────────────────────────────────
+   ④ State — Reset
+───────────────────────────────────────────────────────────────── */
+async function doResetState() {
+  const playerId = $('playerId').value.trim()
+  if (!playerId) { toast('请先填写 player_id', 'err'); return }
+  if (!confirm(`确认重置 ${playerId} 的所有 experience 数据？`)) return
+  try {
+    await DELETE(`/experience/reset/${playerId}`)
+    toast('Experience 数据已重置', 'ok')
+    $('statusBadge').className = 'status-badge status-idle'
+    $('statusBadge').textContent = 'IDLE'
+    $('stateBadge').textContent = '—'
+    $('counters').innerHTML = ''
+    $('stateResult').className = 'result-block empty'
+    $('stateResult').textContent = 'Refresh 刷新状态'
+    $('debugResult').className = 'result-block empty'
+    $('debugResult').textContent = '尚无事件记录'
+    $('debugBadge').textContent = '—'
+    $('timelineList').className = 'result-block empty'
+    $('timelineList').textContent = '尚无事件'
+    $('timelineBadge').textContent = '—'
+  } catch(e) { toast('Reset 失败: ' + e.message, 'err') }
+}
+
+/* ─────────────────────────────────────────────────────────────────
    ⑤ Debug
 ───────────────────────────────────────────────────────────────── */
 async function doRefreshDebug() {
@@ -1737,16 +1765,7 @@ async function runFullDemo() {
 async function doPreviewSilent() {
   const text = $('designText').value.trim()
   if (!text) throw new Error('设计文本为空')
-  const r = await POST('/experience/preview', { text })
-  const ds = r.design_spec
-  $('designBadge').textContent = `${ds.triggers.length} triggers`
-  renderScore(r.experience_spec_summary.is_empty === false ? 0.9 : 0)
-  let html = kv('goal', esc(ds.goal || '—'), 'blue')
-  html += kv('win_condition', esc(ds.win_condition || '—'), ds.win_condition ? 'green' : 'red')
-  html += `<div class="chip-list">`
-  for (const t of ds.triggers) html += `<span class="chip ${esc(t.trigger_type)}">[${esc(t.trigger_type)}] ${esc(t.event)}</span>`
-  html += `</div>`
-  const el = $('designResult'); el.className = 'result-block'; el.innerHTML = html
+  await _doPreviewCore(text)
 }
 async function doValidateSilent() {
   const text = $('designText').value.trim()
@@ -2201,8 +2220,22 @@ function renderEvoEvalDashboard(ev) {
 
 async function stopEvolution() {
   if (!_evoSessionId) return
-  try { await POST('/evolution/stop/' + _evoSessionId, {}); toast('进化已停止', 'ok') }
-  catch (e) { toast('停止失败: ' + e.message, 'err') }
+  try {
+    await POST('/evolution/stop/' + _evoSessionId, {})
+    toast('进化已停止', 'ok')
+    // 立即更新 UI
+    $('wfStatusDot').className = 'wf-status-dot failed'
+    $('wfStatusLabel').textContent = 'STOPPED'
+    $('wfStatusLabel').style.color = 'var(--yellow)'
+    $('injectBadge').textContent = '🧬 ✗ stopped'
+    // 停止轮询
+    if (_evoPollTimer) { clearInterval(_evoPollTimer); _evoPollTimer = null }
+    // 隐藏 Stop 按钮
+    const stopBtn = document.querySelector('#evoProgress button')
+    if (stopBtn) stopBtn.style.display = 'none'
+    // 刷新 State
+    doRefreshState().catch(() => {})
+  } catch (e) { toast('停止失败: ' + e.message, 'err') }
 }
 
 // ─── 页面加载时自动恢复正在运行的 Evolution 会话 ───

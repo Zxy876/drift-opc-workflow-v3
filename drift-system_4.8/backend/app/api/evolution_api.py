@@ -11,9 +11,10 @@ import subprocess
 import threading
 import time
 import uuid
-from typing import Dict
+from typing import Dict, Optional
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/evolution", tags=["evolution"])
 
@@ -46,35 +47,77 @@ def _check_bot_bridge(port: int = 9999, timeout: float = 1.0) -> bool:
         return False
 
 
-@router.post("/start")
-async def start_evolution(body: dict):
-    """
-    启动一次进化循环
+_MAX_SESSION_AGE = 3600 * 24  # 24 小时后自动清理
+_MAX_SESSIONS = 50            # 最多保留 50 个会话
 
-    body:
-      design: str         — 初始关卡设计描述（来自面板 Design 文本框）
-      level_id: str       — 关卡 ID
-      player_id: str      — 玩家 ID
-      difficulty: int     — 目标难度 1-5（默认 3）
-      episodes: int       — 每代局数（默认 5）
-      generations: int    — 最大代数（默认 3）
-      premium: bool       — 是否用 Premium Publish（默认 false）
-      skill: str|null     — 单一技能模式（beginner/average/expert，默认 null）
+
+def _cleanup_old_sessions() -> None:
+    """清理过期已完成会话，避免 _sessions 字典无限增长。"""
+    now = time.time()
+    expired = [
+        sid for sid, s in list(_sessions.items())
+        if s["status"] in ("completed", "failed", "error", "stopped")
+        and now - s.get("started_at", 0) > _MAX_SESSION_AGE
+    ]
+    for sid in expired:
+        sf = _sessions[sid].get("status_file", "")
+        if sf and os.path.exists(sf):
+            try:
+                os.remove(sf)
+            except OSError:
+                pass
+        del _sessions[sid]
+
+    # 如果仍超限，按 started_at 删除最老的已完成会话
+    if len(_sessions) > _MAX_SESSIONS:
+        finished = sorted(
+            [(sid, s) for sid, s in _sessions.items()
+             if s["status"] not in ("starting", "running")],
+            key=lambda x: x[1].get("started_at", 0),
+        )
+        for sid, _ in finished[: len(_sessions) - _MAX_SESSIONS]:
+            sf = _sessions[sid].get("status_file", "")
+            if sf and os.path.exists(sf):
+                try:
+                    os.remove(sf)
+                except OSError:
+                    pass
+            del _sessions[sid]
+
+
+class _StartEvolutionRequest(BaseModel):
+    design: str = ""
+    level_id: str = ""
+    player_id: str = "DriftRLAgent"
+    difficulty: int = 3
+    episodes: int = 5
+    generations: int = 3
+    max_steps: int = 2000
+    premium: bool = False
+    skill: Optional[str] = None
+    bot_port: int = 9999
+
+
+@router.post("/start")
+async def start_evolution(req: _StartEvolutionRequest):
+    """
+    启动一次进化循环。字段含义见 _StartEvolutionRequest。
 
     返回:
       session_id: str     — 进化会话 ID（用于后续轮询）
       status: "started"
     """
+    _cleanup_old_sessions()
+
     # 前置检查：Bot TCP Bridge 必须在运行
-    bot_port = int(body.get("bot_port", 9999))
-    if not _check_bot_bridge(bot_port):
+    if not _check_bot_bridge(req.bot_port):
         raise HTTPException(
             status_code=503,
-            detail=f"Mineflayer Bot 未运行（端口 {bot_port} 不可达）。"
+            detail=f"Mineflayer Bot 未运行（端口 {req.bot_port} 不可达）。"
                    "请先在服务器运行: node player/player_bot.js"
         )
 
-    # BUG-3 互斥检查：同一时间只允许一个 Evolution 会话
+    # 互斥检查：同一时间只允许一个 Evolution 会话
     running = [
         s for s in _sessions.values()
         if s["status"] in ("starting", "running")
@@ -93,23 +136,23 @@ async def start_evolution(body: dict):
     status_file = f"/tmp/evolution_{session_id}_status.json"
 
     # 构建命令（使用 drift-rl-agent 自己的 venv python）
+    level_arg = req.level_id or f"panel_evo_{session_id}"
     cmd = [
         _VENV_PYTHON, "meta/run_evolution.py",
-        "--level",       body.get("level_id", f"panel_evo_{session_id}"),
-        "--difficulty",  str(body.get("difficulty", 3)),
-        "--episodes",    str(body.get("episodes", 5)),
-        "--generations", str(body.get("generations", 3)),
-        "--player-id",   body.get("player_id", "DriftRLAgent"),
+        "--level",       level_arg,
+        "--difficulty",  str(req.difficulty),
+        "--episodes",    str(req.episodes),
+        "--generations", str(req.generations),
+        "--player-id",   req.player_id,
         "--status-file", status_file,
+        "--max-steps",   str(req.max_steps),
     ]
-    if body.get("design"):
-        cmd += ["--design", body["design"]]
-    if body.get("premium"):
+    if req.design:
+        cmd += ["--design", req.design]
+    if req.premium:
         cmd += ["--premium"]
-    if body.get("skill"):
-        cmd += ["--skill", body["skill"]]
-    if body.get("max_steps"):
-        cmd += ["--max-steps", str(int(body["max_steps"]))]
+    if req.skill:
+        cmd += ["--skill", req.skill]
 
     # 初始化会话记录
     _sessions[session_id] = {
@@ -119,11 +162,11 @@ async def start_evolution(body: dict):
         "process": None,
         "started_at": time.time(),
         "params": {
-            "design":      body.get("design", ""),
-            "level_id":    body.get("level_id", ""),
-            "difficulty":  body.get("difficulty", 3),
-            "episodes":    body.get("episodes", 5),
-            "generations": body.get("generations", 3),
+            "design":      req.design,
+            "level_id":    req.level_id,
+            "difficulty":  req.difficulty,
+            "episodes":    req.episodes,
+            "generations": req.generations,
         },
     }
 
@@ -169,6 +212,12 @@ async def start_evolution(body: dict):
                 _sessions[session_id]["status"] = "failed"
             _sessions[session_id]["exit_code"] = rc
             _sessions[session_id]["output_tail"] = output_lines[-50:]
+            # 进程完成后清理状态文件
+            try:
+                if os.path.exists(status_file):
+                    os.remove(status_file)
+            except OSError:
+                pass
         except Exception as exc:
             _sessions[session_id]["status"] = "error"
             _sessions[session_id]["error"] = str(exc)
@@ -251,6 +300,7 @@ async def stop_evolution(session_id: str):
 @router.get("/list")
 async def list_sessions():
     """列出所有进化会话"""
+    _cleanup_old_sessions()
     return {
         "sessions": [
             {
@@ -279,5 +329,12 @@ def _cleanup_evolution_processes():
                     proc.kill()
                 except Exception:
                     pass
+        # 清理状态文件
+        sf = session.get("status_file", "")
+        if sf and os.path.exists(sf):
+            try:
+                os.remove(sf)
+            except OSError:
+                pass
 
 _atexit.register(_cleanup_evolution_processes)

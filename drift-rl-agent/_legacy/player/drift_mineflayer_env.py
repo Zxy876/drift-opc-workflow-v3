@@ -6,6 +6,7 @@ Tianshou 直接使用这个环境进行 RL 训练。
 """
 
 import json
+import os
 import socket
 import time
 from typing import Any, Optional
@@ -45,7 +46,7 @@ class DriftMineflayerEnv(gym.Env):
         self,
         bot_host: str = "localhost",
         bot_port: int = 9999,
-        drift_url: str = "http://35.201.132.58:8000",
+        drift_url: str = os.environ.get("DRIFT_URL", "http://localhost:8000"),
         level_id: str = "demo_rl_001",
         player_id: str = "DriftRLAgent",
         max_steps: int = 6000,

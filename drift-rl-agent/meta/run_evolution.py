@@ -6,8 +6,8 @@ Drift RL Agent 主入口 — 启动双环自进化系统（StrategyBot 版）
 
 前提：
   1. node player/player_bot.js 已在运行
-  2. MC 服务器 35.201.132.58:25565 已启动
-  3. Drift 后端 35.201.132.58:8000 已启动
+  2. MC 服务器 <MC_SERVER_HOST>:25565 已启动
+  3. Drift 后端 $DRIFT_URL:8000 已启动
   4. 环境变量 OPENAI_API_KEY 已设置
 """
 

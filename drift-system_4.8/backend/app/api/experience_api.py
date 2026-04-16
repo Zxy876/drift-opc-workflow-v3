@@ -397,6 +397,32 @@ def validate_experience_design(req: _ValidateRequest) -> Dict[str, Any]:
 # Phase 10：Simulation Engine
 # =====================================================================
 
+def _resolve_experience_spec(
+    level_id: Optional[str],
+    experience_spec: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """从 level_id 或直接传入的 spec 获取 experience_spec。"""
+    if experience_spec:
+        return experience_spec
+    if level_id:
+        level_id_clean = str(level_id).strip()
+        level_doc = _load_level_doc(level_id_clean)
+        if level_doc is None:
+            raise HTTPException(status_code=404, detail=f"Level '{level_id_clean}' not found")
+        meta = level_doc.get("meta") or {}
+        spec = meta.get("experience_spec")
+        if not isinstance(spec, dict):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Level '{level_id_clean}' has no experience_spec in meta",
+            )
+        return spec
+    raise HTTPException(
+        status_code=400,
+        detail="必须提供 'level_id' 或 'experience_spec' 之一",
+    )
+
+
 class _SimulateRequest(BaseModel):
     level_id: Optional[str] = None          # 从已有关卡加载 spec
     experience_spec: Optional[Dict[str, Any]] = None  # 直接传入 spec
@@ -432,28 +458,7 @@ def simulate_level(req: _SimulateRequest) -> Dict[str, Any]:
     from app.core.runtime.simulation_engine import simulate_experience_spec
 
     # ── 1. 获取 experience_spec ──────────────────────────────────────
-    spec: Optional[Dict[str, Any]] = None
-
-    if req.experience_spec:
-        spec = req.experience_spec
-
-    elif req.level_id:
-        level_id_clean = str(req.level_id).strip()
-        level_doc = _load_level_doc(level_id_clean)
-        if level_doc is None:
-            raise HTTPException(status_code=404, detail=f"Level '{level_id_clean}' not found")
-        meta = level_doc.get("meta") or {}
-        spec = meta.get("experience_spec")
-        if not isinstance(spec, dict):
-            raise HTTPException(
-                status_code=422,
-                detail=f"Level '{level_id_clean}' has no experience_spec in meta",
-            )
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail="必须提供 'level_id' 或 'experience_spec' 之一",
-        )
+    spec = _resolve_experience_spec(req.level_id, req.experience_spec)
 
     # ── 2. 参数校验 ──────────────────────────────────────────────────
     n = max(10, min(1000, req.n))
@@ -503,27 +508,7 @@ def optimize_level(req: _OptimizeRequest) -> Dict[str, Any]:
     from app.core.runtime.spec_optimizer import find_best_spec
 
     # ── 1. 获取 experience_spec ──────────────────────────────────────
-    spec: Optional[Dict[str, Any]] = None
-
-    if req.experience_spec:
-        spec = req.experience_spec
-    elif req.level_id:
-        level_id_clean = str(req.level_id).strip()
-        level_doc = _load_level_doc(level_id_clean)
-        if level_doc is None:
-            raise HTTPException(status_code=404, detail=f"Level '{level_id_clean}' not found")
-        meta = level_doc.get("meta") or {}
-        spec = meta.get("experience_spec")
-        if not isinstance(spec, dict):
-            raise HTTPException(
-                status_code=422,
-                detail=f"Level '{level_id_clean}' has no experience_spec in meta",
-            )
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail="必须提供 'level_id' 或 'experience_spec' 之一",
-        )
+    spec = _resolve_experience_spec(req.level_id, req.experience_spec)
 
     # ── 2. 参数校验 ──────────────────────────────────────────────────
     target = max(0.05, min(0.95, req.target_win_rate))
@@ -562,23 +547,31 @@ def apply_optimized_spec(req: _ApplySpecRequest) -> Dict[str, Any]:
     if level_doc is None:
         raise HTTPException(status_code=404, detail=f"Level '{level_id}' not found")
 
-    # 写入 spec 并持久化
+    # 写入 spec 并持久化（使用与 _load_level_doc 相同的搜索路径）
     level_doc.setdefault("meta", {})["experience_spec"] = req.spec
 
-    level_file = _load_level_doc.__doc__  # 借用辅助函数，但需要自己定位文件路径
-    _levels_dir = os.path.join(
-        os.path.dirname(__file__), "..", "..", "..", "content", "levels"
+    from app.core.story.story_loader import (
+        _find_level_path as _slp_find,
+        _candidate_filenames as _slp_candidates,
+        DATA_DIR as _DATA_DIR,
     )
-    level_path = os.path.join(_levels_dir, f"{level_id}.json")
-    if os.path.exists(level_path):
-        with open(level_path, "w", encoding="utf-8") as f:
-            _json.dump(level_doc, f, ensure_ascii=False, indent=2)
+    level_path: Optional[str] = None
+    for _fn in _slp_candidates(level_id):
+        _found = _slp_find(_fn)
+        if _found and os.path.isfile(_found):
+            level_path = _found
+            break
+    if level_path is None:
+        # 关卡文件不存在，写入 generated/ 目录（_find_level_path 也会搜索此目录）
+        _gen_dir = os.path.join(_DATA_DIR, "generated")
+        os.makedirs(_gen_dir, exist_ok=True)
+        level_path = os.path.join(_gen_dir, f"{level_id}.json")
+    with open(level_path, "w", encoding="utf-8") as f:
+        _json.dump(level_doc, f, ensure_ascii=False, indent=2)
 
-    # 将新 spec 接入运行时（若玩家当前已加载该关卡）
+    # 清除旧 debug 快照，避免残留
     try:
-        from app.core.runtime.experience_debug_store import ExperienceDebugStore
-        store = ExperienceDebugStore.get_instance()
-        store.clear_player(player_id)   # 清除旧 debug 快照，避免残留
+        experience_debug_store.clear(player_id)
     except Exception:
         pass
 

@@ -210,7 +210,7 @@
     <div class="subtitle">AI 游戏内容生成工作流 · 实时监控看板</div>
   </div>
   <div style="display:flex;gap:12px;align-items:center">
-    <span class="server-badge" id="serverBadge">35.201.132.58</span>
+    <span class="server-badge" id="serverBadge">localhost</span>
     <span class="server-badge" id="healthBadge"><span class="status-dot dot-gray" id="healthDot"></span>连接中...</span>
   </div>
 </div>
@@ -244,6 +244,19 @@
 
     <div class="health-box">
       <div class="panel-title" style="padding:0 0 8px;border:none">📡 服务状态</div>
+      <div class="health-item" style="flex-direction:column;align-items:flex-start;gap:4px;margin-bottom:8px">
+        <label style="font-size:10px;color:#8b949e">AsyncAIFlow URL</label>
+        <div style="display:flex;gap:4px;width:100%">
+          <input id="aafUrlInput" style="flex:1;background:#161b22;border:1px solid #30363d;border-radius:4px;color:#c9d1d9;padding:4px 8px;font-size:11px;font-family:inherit" placeholder="http://localhost:8080">
+        </div>
+      </div>
+      <div class="health-item" style="flex-direction:column;align-items:flex-start;gap:4px;margin-bottom:8px">
+        <label style="font-size:10px;color:#8b949e">Drift Backend URL</label>
+        <div style="display:flex;gap:4px;width:100%">
+          <input id="driftUrlInput" style="flex:1;background:#161b22;border:1px solid #30363d;border-radius:4px;color:#c9d1d9;padding:4px 8px;font-size:11px;font-family:inherit" placeholder="http://localhost:8000">
+          <button onclick="applyServerConfig()" style="background:#1f6feb;border:none;border-radius:4px;color:#fff;padding:4px 10px;font-size:11px;cursor:pointer">✓ Apply</button>
+        </div>
+      </div>
       <div class="health-item">
         <span class="health-label"><span class="status-dot" id="aafDot"></span>AsyncAIFlow :8080</span>
         <span class="health-val" id="aafStatus">—</span>
@@ -319,8 +332,26 @@
 </div>
 
 <script>
-const AAF = 'http://35.201.132.58:8080';
-const DRIFT = 'http://35.201.132.58:8000';
+let AAF = (localStorage.getItem('drift.dashboard.aaf') || 'http://localhost:8080').replace(/\/$/, '')
+let DRIFT = (localStorage.getItem('drift.dashboard.drift') || 'http://localhost:8000').replace(/\/$/, '')
+
+function applyServerConfig() {
+  const aafEl = document.getElementById('aafUrlInput')
+  const driftEl = document.getElementById('driftUrlInput')
+  if (aafEl && aafEl.value.trim()) {
+    AAF = aafEl.value.trim().replace(/\/$/, '')
+    localStorage.setItem('drift.dashboard.aaf', AAF)
+  }
+  if (driftEl && driftEl.value.trim()) {
+    DRIFT = driftEl.value.trim().replace(/\/$/, '')
+    localStorage.setItem('drift.dashboard.drift', DRIFT)
+  }
+  try {
+    const host = new URL(DRIFT).hostname
+    document.getElementById('serverBadge').textContent = host
+  } catch(e) {}
+  checkHealth()
+}
 const DEFAULT_PLAYER_ID = 'ZXYHELEN';
 const PLAYER_STORAGE_KEY = 'drift.dashboard.playerId';
 
@@ -852,6 +883,17 @@ async function triggerWorkflow() {
 }
 
 // ── Init ───────────────────────────────────────────────────
+// 从 localStorage 恢复 URL 配置并填入输入框
+;(function initServerConfig() {
+  const aafEl = document.getElementById('aafUrlInput')
+  const driftEl = document.getElementById('driftUrlInput')
+  if (aafEl) aafEl.value = AAF
+  if (driftEl) driftEl.value = DRIFT
+  try {
+    const host = new URL(DRIFT).hostname
+    document.getElementById('serverBadge').textContent = host
+  } catch(e) {}
+})()
 initPlayerInput();
 checkHealth();
 refreshWfList();

@@ -2,7 +2,7 @@
  * Drift RL Agent — Mineflayer Bot + TCP Bridge
  *
  * 功能：
- * 1. 连接 MC 服务器（35.201.132.58:25565）
+ * 1. 连接 MC 服务器（地址读取自 $MC_HOST，默认 localhost:25565）
  * 2. 暴露 TCP 接口（端口 9999）供 Python RL 环境控制
  * 3. 支持的命令：get_state / action / command / reset / ping
  *
