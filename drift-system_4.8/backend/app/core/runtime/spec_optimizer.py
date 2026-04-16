@@ -51,14 +51,26 @@ def _get_win_threshold(spec: Dict[str, Any]) -> Optional[int]:
     return None
 
 
+# 中文数字映射
+_NUM_ZH = {1:"一",2:"二",3:"三",4:"四",5:"五",6:"六",7:"七",8:"八",9:"九",10:"十"}
+
+
 def _set_win_threshold(spec: Dict[str, Any], n: int) -> None:
-    """就地修改 win 规则中 collected_count >= N 为 collected_count >= n。"""
+    """就地修改 win 规则中 collected_count >= N 为 collected_count >= n，并同步更新 desc。"""
     for rule in spec.get("rules") or []:
         if rule.get("type") == "win":
             cond = str(rule.get("condition") or "")
             new_cond = _COL_COND_RE.sub(lambda m: m.group(1) + str(n), cond)
             if new_cond != cond:
                 rule["condition"] = new_cond
+                # 同步更新 desc 中的数字（中文数字 + 阿拉伯数字）
+                desc = rule.get("desc", "")
+                if desc:
+                    zh_n = _NUM_ZH.get(n, str(n))
+                    desc = re.sub(r'[一二三四五六七八九十]+(?=颗|个|枚|块)', zh_n, desc)
+                    desc = re.sub(r'(?<=收集)\d+', str(n), desc)
+                    desc = re.sub(r'(?<=collect\s)\d+', str(n), desc, flags=re.IGNORECASE)
+                    rule["desc"] = desc
                 return
 
 

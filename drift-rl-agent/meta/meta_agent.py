@@ -361,6 +361,28 @@ class MetaAgent:
                 results.append(result)
                 consecutive_failures = 0
 
+                # ── 桥接到 Experience Runtime ──
+                try:
+                    import requests as _req
+                    event_payload = {
+                        "event": "bot_episode_complete",
+                        "data": {
+                            "completed": result.get("completed", False),
+                            "time": result.get("time", 0),
+                            "deaths": result.get("deaths", 0),
+                            "exploration": result.get("exploration", 0),
+                            "skill": skill,
+                            "episode": ep,
+                        }
+                    }
+                    _req.post(
+                        f"{self.drift_url}/experience/event/{player_id}",
+                        json=event_payload,
+                        timeout=5,
+                    )
+                except Exception:
+                    pass  # 桥接失败不影响 Evolution 主流程
+
                 status = "PASS" if result["completed"] else "FAIL"
                 print(f"  Episode {ep + 1}/{len(schedule)} [{skill}]: {status} "
                       f"({result['time']:.0f}s, {result['deaths']} deaths, "
