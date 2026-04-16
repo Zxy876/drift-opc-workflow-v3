@@ -13,7 +13,7 @@
 #
 # 环境变量:
 #   PLAYER_ID   自定义玩家 ID（等同于传入 --player-id <ID>）
-#   OPENAI_API_KEY  必须设置
+#   GLM_API_KEY 或 OPENAI_API_KEY  至少设置一个
 
 set -e
 
@@ -56,10 +56,11 @@ fi
 echo "[Setup] 检查 Python 依赖..."
 pip install -r requirements.txt --quiet 2>/dev/null || echo "[Warn] pip install 失败，请手动安装"
 
-# 检查 OPENAI_API_KEY
-if [ -z "$OPENAI_API_KEY" ]; then
-    echo "[Error] 请设置 OPENAI_API_KEY 环境变量"
-    echo "  export OPENAI_API_KEY=your-key-here"
+# 检查 LLM API Key
+if [ -z "$GLM_API_KEY" ] && [ -z "$OPENAI_API_KEY" ]; then
+    echo "[Error] GLM_API_KEY 和 OPENAI_API_KEY 均未设置"
+    echo "  export GLM_API_KEY=your-glm-api-key-here"
+    echo "  或 export OPENAI_API_KEY=your-openai-key-here"
     exit 1
 fi
 

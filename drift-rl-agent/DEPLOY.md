@@ -113,7 +113,8 @@ python3 meta/run_evolution.py \
 | `--player-id` | Bot 玩家 ID | bot_001 |
 | `--curriculum` | 课程学习模式 | off |
 | `--premium` | 使用高级 LLM (gpt-4o) | False |
-| `--drift-url` | Drift Backend URL | configs 中读取 |
+| `--drift-url` | Drift Backend URL | `$DRIFT_URL` 或 `http://localhost:8000` |
+| `--async-url` | AsyncAIFlow URL | `$ASYNCAIFLOW_URL` 或 `http://localhost:8080` |
 | `--bot-port` | TCP Bridge 端口 | 9999 |
 
 ---
@@ -171,7 +172,7 @@ gcloud compute ssh drift-demo-vm \
   --command='
     set -e
     cd ~/drift-opc-workflow-v3
-    git pull origin feature/drift-rl-agent
+    git pull origin main
     cd drift-rl-agent
     npm install
     pip install -r requirements.txt
