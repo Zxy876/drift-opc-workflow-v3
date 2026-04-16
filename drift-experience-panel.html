@@ -434,8 +434,8 @@ textarea { min-height: 80px; }
     </div>
   </div>
   <div class="server-row">
-    <input type="text" id="baseUrl" value="http://35.201.132.58:8000" placeholder="Backend URL" style="flex:1" />
-    <input type="text" id="asyncUrl" value="http://35.201.132.58:8080" placeholder="AsyncAIFlow URL" style="flex:1;font-size:11px" />
+    <input type="text" id="baseUrl" value="" placeholder="Backend URL" style="flex:1" />
+    <input type="text" id="asyncUrl" value="" placeholder="AsyncAIFlow URL" style="flex:1;font-size:11px" />
     <div class="status-pill" id="statusPill" onclick="checkHealth()" title="点击检测连接">
       <span class="dot dot-gray" id="statusDot"></span>
       <span id="statusText">未连接</span>
@@ -708,8 +708,10 @@ textarea { min-height: 80px; }
 <script>
 /* ─── Globals ──────────────────────────────────────────────────── */
 const $ = id => document.getElementById(id)
-const BASE = () => ($('baseUrl').value || 'http://localhost:8000').replace(/\/$/, '')
-const ASYNC_BASE = () => ($('asyncUrl').value || 'http://localhost:8080').replace(/\/$/, '')
+const DEFAULT_BASE = () => window.location.origin
+const DEFAULT_ASYNC_BASE = () => `${window.location.protocol}//${window.location.hostname}:8080`
+const BASE = () => ($('baseUrl').value || DEFAULT_BASE()).replace(/\/$/, '')
+const ASYNC_BASE = () => ($('asyncUrl').value || DEFAULT_ASYNC_BASE()).replace(/\/$/, '')
 let _pollTimer = null
 let _publishMode = 'quick'   // quick | standard | premium
 let _wfPollTimer = null      // AsyncAIFlow workflow polling timer
