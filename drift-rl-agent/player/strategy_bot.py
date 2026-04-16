@@ -256,8 +256,11 @@ class StrategyBot:
                 if target_items:
                     self._handle_collect(target_items[0], pos)
                     return
+                else:
+                    # 附近没有目标物品，可能已全部收集，推进到下一个目标
+                    self.current_goal_idx += 1
             elif goal["type"] == "reach" and self.goal_positions:
-                tx, ty, tz = self.goal_positions[0]
+                tx, ty, tz = self.goal_positions[self.current_goal_idx % len(self.goal_positions)]
                 self.client.navigate_to(tx, ty, tz)
                 return
 
@@ -383,9 +386,13 @@ class StrategyBot:
         pos = state.get("position", [0, 0, 0])
         pos = [p if isinstance(p, (int, float)) else 0 for p in pos]
 
-        # 策略1: 如果有目标坐标，导航过去
+        # 策略1: 如果有目标坐标，导航过去（到达后推进 idx）
         if self.goal_positions and self.profile.get("use_pathfinder", False):
             target = self.goal_positions[self.current_goal_idx % len(self.goal_positions)]
+            dist = math.sqrt(sum((a - b) ** 2 for a, b in zip(pos, target)))
+            if dist < 3.0:  # 已到达目标，推进到下一个
+                self.current_goal_idx += 1
+                return
             self.client.navigate_to(target[0], target[1], target[2])
             return
 
@@ -450,8 +457,8 @@ class StrategyBot:
 
         # 回退：简单名称匹配
         ITEM_ALIASES = {
-            "pearls": ["ender_pearl", "pearl", "prismarine_shard", "emerald"],
-            "pearl": ["ender_pearl", "pearl", "prismarine_shard", "emerald"],
+            "pearls": ["ender_pearl", "pearl", "prismarine_shard"],
+            "pearl": ["ender_pearl", "pearl", "prismarine_shard"],
             "gems": ["diamond", "emerald", "prismarine_shard"],
             "gem": ["diamond", "emerald", "prismarine_shard"],
             "keys": ["tripwire_hook", "gold_ingot"],

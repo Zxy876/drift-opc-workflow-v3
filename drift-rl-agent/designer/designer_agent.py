@@ -7,6 +7,7 @@ DesignerAgent — LLM 驱动的关卡设计师
 
 import json
 import os
+import re
 import time
 from typing import Optional
 
@@ -156,7 +157,6 @@ class DesignerAgent:
 
     def _apply_deterministic_adjustments(self, design_text: str, hints: list, difficulty: int) -> dict | None:
         """确定性调整：根据规则引擎的提示直接修改设计文本中的数值，不调 LLM"""
-        import re
         new_text = design_text
         changes = []
 

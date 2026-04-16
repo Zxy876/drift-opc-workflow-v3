@@ -32,7 +32,7 @@ DESIGN_TO_MC: dict[str, list[str]] = {
 
 # Drift experience state 中的状态键 → MC 实体名
 STATE_KEY_TO_MC: dict[str, list[str]] = {
-    "collected_pearls": ["ender_pearl", "prismarine_shard", "emerald"],
+    "collected_pearls": ["ender_pearl", "prismarine_shard"],
     "collected_gems": ["emerald", "diamond"],
     "collected_keys": ["tripwire_hook", "gold_ingot"],
     "collected_runes": ["nether_star", "glowstone_dust"],
