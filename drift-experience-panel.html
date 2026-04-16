@@ -1246,9 +1246,28 @@ async function doPublishQuick(btn, text, levelId, playerId) {
   }).catch(e => { toast('Publish 失败: ' + e.message, 'err') })
 }
 
-/** Premium Publish: Beam Search + 叙事弧，通过 drift_experience worker */
+/** Premium Publish: 先编译关卡存入后端，再提交 AsyncAIFlow Beam Search + 叙事弧增强 */
 async function doPublishPremium(btn, text, levelId, playerId) {
   await withSpin(btn, async () => {
+    // ── Step 1: 先编译关卡（和 Quick 一样），确保关卡存入后端 ──
+    const ri = await POST('/story/inject', {
+      level_id: levelId,
+      title: $('levelTitle').value || levelId,
+      text,
+      player_id: playerId,
+    })
+    const es = ri.experience_spec_summary || {}
+    toast(`关卡 ${levelId} 已编译（${es.rule_count || 0} rules），提交 Premium 增强...`, 'ok')
+
+    // ── Step 2: 推送到 MC（最佳努力，玩家不在线也不影响后续） ──
+    let pushOk = false
+    try {
+      const rp = await POST('/world/push-load', { player_id: playerId, level_id: levelId })
+      pushOk = rp.status === 'ok'
+    } catch(e) { /* 玩家不在线，继续 */ }
+    $('runtimeBadge').textContent = pushOk ? '✓ loaded' : '✓ saved'
+
+    // ── Step 3: 提交 AsyncAIFlow 工作流做增强处理 ──
     const body = {
       issue: text,
       repo_context: 'drift_experience',
@@ -1274,6 +1293,8 @@ async function doPublishPremium(btn, text, levelId, playerId) {
     el.className = 'result-block'
     el.innerHTML = kv('status', 'Premium workflow submitted', 'blue')
       + kv('workflowId', esc(String(workflowId)), 'cyan')
+      + kv('level_id', esc(levelId), 'blue')
+      + kv('compiled', (es.rule_count || 0) + ' rules / ' + (es.trigger_count || 0) + ' triggers', 'green')
       + kv('mode', 'Beam Search + 叙事弧', 'purple')
       + kv('beam_width', '2 paths', 'green')
       + kv('rounds', '2 rounds', 'green')
