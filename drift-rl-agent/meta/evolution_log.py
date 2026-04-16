@@ -53,6 +53,9 @@ class EvolutionLog:
             return {"total_generations": 0}
 
         completion_rates = [e["eval"]["completion_rate"] for e in self.entries]
+        # 使用 average 技能通关率判断 Flow Zone（与 meta_agent.py 一致）
+        last_eval = self.entries[-1]["eval"]
+        avg_cr = last_eval.get("completion_by_skill", {}).get("average", completion_rates[-1])
 
         return {
             "run_id": self.run_id,
@@ -61,7 +64,8 @@ class EvolutionLog:
             "best_completion_rate": max(completion_rates),
             "worst_completion_rate": min(completion_rates),
             "final_completion_rate": completion_rates[-1],
-            "in_flow_zone": 0.6 <= completion_rates[-1] <= 0.8,
+            "final_average_cr": avg_cr,
+            "in_flow_zone": 0.6 <= avg_cr <= 0.8,
         }
 
     def export_json(self, path: Optional[str] = None) -> str:

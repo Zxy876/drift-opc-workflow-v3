@@ -2233,9 +2233,15 @@ function simpleDiff(oldText, newText) {
   const oldSet = new Set(oldLines)
   const newSet = new Set(newLines)
   const result = []
-  for (const l of oldLines) if (!newSet.has(l)) result.push({ type: 'rem', text: l })
-  for (const l of newLines) if (!oldSet.has(l)) result.push({ type: 'add', text: l })
-  for (const l of newLines) if (oldSet.has(l))  result.push({ type: 'same', text: l })
+  // 按旧文本顺序输出：保留的和删除的
+  for (const l of oldLines) {
+    if (newSet.has(l)) result.push({ type: 'same', text: l })
+    else result.push({ type: 'rem', text: l })
+  }
+  // 再追加新增的行（在旧文本中不存在的）
+  for (const l of newLines) {
+    if (!oldSet.has(l)) result.push({ type: 'add', text: l })
+  }
   return result
 }
 

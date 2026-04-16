@@ -6,6 +6,7 @@ StrategyBot 通过技能档案模拟 beginner / average / expert 玩家行为，
 """
 
 import os
+from functools import lru_cache
 from typing import Any
 
 import yaml
@@ -59,6 +60,7 @@ EPISODES_PER_SKILL: dict[str, int] = {
 }
 
 
+@lru_cache(maxsize=4)
 def load_episodes_per_skill(config_path: str | None = None) -> dict[str, int]:
     """
     从 YAML 加载每代各技能级别的局数分配，加载失败则返回默认值。
@@ -80,6 +82,7 @@ def load_episodes_per_skill(config_path: str | None = None) -> dict[str, int]:
     return dict(EPISODES_PER_SKILL)
 
 
+@lru_cache(maxsize=4)
 def load_skill_profiles(config_path: str | None = None) -> dict[str, dict[str, Any]]:
     """
     从 YAML 配置文件加载技能档案，加载失败则返回默认值。

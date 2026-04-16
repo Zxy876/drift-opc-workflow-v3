@@ -351,7 +351,7 @@ class DesignerAgent:
             poll_count += 1
             try:
                 resp = requests.get(
-                    f"{self.async_url}/workflows/{workflow_id}",
+                    f"{self.async_url}/workflow/{workflow_id}",
                     timeout=10,
                 )
                 data = resp.json().get("data", resp.json())

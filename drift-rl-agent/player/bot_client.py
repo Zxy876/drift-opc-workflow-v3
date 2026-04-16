@@ -49,11 +49,14 @@ class BotClient:
                 self._sock.sendall(msg.encode())
 
                 response = b""
+                MAX_RESPONSE_SIZE = 1 * 1024 * 1024  # 1MB
                 while not response.endswith(b"\n"):
                     chunk = self._sock.recv(8192)
                     if not chunk:
                         raise ConnectionError("Bot 连接断开")
                     response += chunk
+                    if len(response) > MAX_RESPONSE_SIZE:
+                        raise ConnectionError("Bot 响应超过 1MB 限制")
 
                 return json.loads(response.decode().strip())
             except (ConnectionError, socket.error, OSError) as e:

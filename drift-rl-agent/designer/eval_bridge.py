@@ -142,7 +142,7 @@ def analyze_multi_skill_data(play_results: list) -> dict:
 
     # 生成确定性改进建议（不依赖 LLM 判断方向）
     adjustment_hints = []
-    avg_cr = base_report.get("completion_rate", 0.0)
+    avg_cr = completion_by_skill.get("average", base_report.get("completion_rate", 0.0))
     if avg_cr < 0.4:
         adjustment_hints.append("REDUCE_DIFFICULTY_LARGE")
         if base_report.get("avg_deaths", 0) > 2:
