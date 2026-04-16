@@ -804,7 +804,9 @@ async function asyncApi(method, path, body) {
     const txt = await r.text().catch(() => '')
     throw new Error(`HTTP ${r.status}: ${txt.slice(0, 200)}`)
   }
-  return r.json()
+  // 把超过 15 位的纯数字值包上引号，防止 JS Number 精度丢失（int64 workflowId）
+  const raw = await r.text()
+  return JSON.parse(raw.replace(/:\s*(\d{15,})\b/g, ':"$1"'))
 }
 
 /* ─── Publish Mode Selector ───────────────────────────────────── */
@@ -1329,8 +1331,7 @@ function showWorkflowMonitor(workflowId, difficulty) {
 
   // Build pipeline steps based on difficulty
   const steps = difficulty === 'premium'
-    ? ['🔎 Beam Search', '📊 Score', '📋 Arc Plan', '🏗 Build Levels',
-       '🔄 State Graph', '🌍 World Patch', '📌 Notify', '🌊 Refresh']
+    ? ['🔎 Search', '📋 Plan', '💻 Code', '🔍 Review', '🧪 Test', '🚀 Deploy', '📌 Git Push', '🌊 Refresh']
     : difficulty >= 5
     ? ['🔎 Search', '📋 Plan', '💻 Code', '🔍 Review', '🧪 Test', '🚀 Deploy', '📌 Git Push', '🌊 Refresh']
     : difficulty >= 4
@@ -1365,7 +1366,7 @@ function startWorkflowPolling(workflowId, playerId, levelId) {
     }
 
     try {
-      const r = await asyncApi('GET', '/workflows/' + workflowId)
+      const r = await asyncApi('GET', '/workflow/' + workflowId)
       const wf = r.data || r
       const status = (wf.status || '').toUpperCase()
 
@@ -1479,7 +1480,7 @@ function updatePipelineSteps(wf) {
 async function syncAfterWorkflow(workflowId, playerId, levelId) {
   try {
     // Try to fetch world_patch from workflow result
-    const r = await asyncApi('GET', '/workflows/' + workflowId)
+    const r = await asyncApi('GET', '/workflow/' + workflowId)
     const wf = r.data || r
     const actions = wf.actions || []
 
