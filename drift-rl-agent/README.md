@@ -131,19 +131,16 @@ evolution:
 
 ## 新增功能 (Phase 2)
 
-> **注意**: 以下描述基于旧版 PPO/RL 架构。Phase 8 已重构为 StrategyBot，相关文件已移至 `_legacy/`。
+> **注意**: 旧版 PPO/RL 代码已删除，当前使用 StrategyBot 架构（见 `meta/` 目录）。
 
 - **一键启动**: `bash run.sh demo_rl_001 3`
 - **课程学习**: `python meta/run_evolution.py --curriculum --difficulty 5`
 - **批量生成**: `python designer/batch_generate.py --prefix my_world --publish quick`
-- **模型推理**: `python _legacy/player/play_with_model.py --model checkpoints/player_ppo.pth`
 - **进化可视化**: `python meta/visualize_evolution.py`
 
 ## 新增功能 (Phase 3)
 
-> **注意**: 以下描述基于旧版 PPO/RL 架构。Phase 8 已重构为 StrategyBot，相关文件已移至 `_legacy/`。
-
-### 观测空间扩展 (F1 + S1)
+> **注意**: 旧版 PPO/RL 代码已删除，当前使用 StrategyBot 架构（见 `meta/` 目录）。
 `player/observation_space.py` 统一定义 64 维观测向量布局；`obs[57:62]` 新增有效信号：
 - `obs[57]` 当前 Drift 难度 (0–1)
 - `obs[58]` 剩余触发器比例
@@ -194,7 +191,7 @@ python tests/smoke_test.py
 
 ## 新增功能 (Phase 4)
 
-> **注意**: 以下描述基于旧版 PPO/RL 架构。Phase 8 已重构为 StrategyBot，相关文件已移至 `_legacy/`。
+> **注意**: 旧版 PPO/RL 代码已删除，当前使用 StrategyBot 架构（见 `meta/` 目录）。
 
 ### 模型格式统一 (C1)
 所有模型保存/加载统一支持两种格式：
@@ -227,7 +224,7 @@ Quick Publish 和 Premium Publish 均支持 3 次重试。
 
 ## 新增功能 (Phase 5)
 
-> **注意**: 以下描述基于旧版 PPO/RL 架构。Phase 8 已重构为 StrategyBot，相关文件已移至 `_legacy/`。
+> **注意**: 旧版 PPO/RL 代码已删除，当前使用 StrategyBot 架构（见 `meta/` 目录）。
 
 ### 死亡检测优化 (Q3)
 `last_death_cause` 优先于 `health <= 0` 判断，避免重复计入。Bot 侧读取后立即清除。
@@ -243,7 +240,7 @@ Quick Publish 和 Premium Publish 均支持 3 次重试。
 
 ## 新增功能 (Phase 6)
 
-> **注意**: 以下描述基于旧版 PPO/RL 架构。Phase 8 已重构为 StrategyBot，相关文件已移至 `_legacy/`。
+> **注意**: 旧版 PPO/RL 代码已删除，当前使用 StrategyBot 架构（见 `meta/` 目录）。
 
 ### TensorBoard 训练可视化 (I1)
 `train_player.py` 集成 TensorBoard Logger，训练时自动生成事件文件到 `tb_logs/` 目录。
@@ -293,17 +290,7 @@ python tests/smoke_test.py
 
 ### 归档文件
 
-旧版 PPO/RL 文件已通过 `git mv` 移至 `_legacy/`（历史记录保留）：
-
-| 归档路径 | 原路径 |
-|---------|-------|
-| `_legacy/player/drift_mineflayer_env.py` | `player/` |
-| `_legacy/player/train_player.py` | `player/` |
-| `_legacy/player/play_with_model.py` | `player/` |
-| `_legacy/player/observation_space.py` | `player/` |
-| `_legacy/player/reward_functions.py` | `player/` |
-| `_legacy/player/action_utils.py` | `player/` |
-| `_legacy/configs/reward_params.yaml` | `configs/` |
+旧版 PPO/RL 文件已删除。
 
 ### 冒烟测试
 ```bash
