@@ -36,7 +36,7 @@ class MetaAgent:
         designer: DesignerAgent,
         bot_host: str = "localhost",
         bot_port: int = 9999,
-        drift_url: str = "http://35.201.132.58:8000",
+        drift_url: str = os.environ.get("DRIFT_URL", "http://localhost:8000"),
         config_path: Optional[str] = None,
         single_skill: Optional[str] = None,
         status_file: Optional[str] = None,

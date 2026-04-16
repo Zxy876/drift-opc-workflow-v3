@@ -1,11 +1,12 @@
 # Drift 系统服务器地址配置
+# 所有地址可通过环境变量覆盖： DRIFT_URL / ASYNCAIFLOW_URL / MC_HOST / MC_PORT
 drift:
-  backend_url: "http://35.201.132.58:8000"
-  asyncaiflow_url: "http://35.201.132.58:8080"
+  backend_url: "http://localhost:8000"
+  asyncaiflow_url: "http://localhost:8080"
   mc_server:
-    host: "35.201.132.58"
+    host: "localhost"
     port: 25565
-  panel_url: "http://35.201.132.58:8888/drift-experience-panel.html"
+  panel_url: "http://localhost:8888/drift-experience-panel.html"
 
 # Mineflayer Bot 配置
 bot:

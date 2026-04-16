@@ -35,9 +35,11 @@ def main():
                         help="每代评估局数（覆盖配置）")
     parser.add_argument("--generations", type=int, default=None,
                         help="最大进化代数（覆盖配置）")
-    parser.add_argument("--drift-url", type=str, default="http://35.201.132.58:8000",
+    parser.add_argument("--drift-url", type=str,
+                        default=os.environ.get("DRIFT_URL", "http://localhost:8000"),
                         help="Drift 后端 URL")
-    parser.add_argument("--async-url", type=str, default="http://35.201.132.58:8080",
+    parser.add_argument("--async-url", type=str,
+                        default=os.environ.get("ASYNCAIFLOW_URL", "http://localhost:8080"),
                         help="AsyncAIFlow URL")
     parser.add_argument("--bot-port", type=int, default=9999,
                         help="Mineflayer Bot TCP Bridge 端口")

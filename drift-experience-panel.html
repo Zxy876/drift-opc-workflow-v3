@@ -440,6 +440,10 @@ textarea { min-height: 80px; }
       <span class="dot dot-gray" id="statusDot"></span>
       <span id="statusText">未连接</span>
     </div>
+    <div class="status-pill" id="asyncStatusPill" title="AsyncAIFlow 状态" style="cursor:default">
+      <span class="dot dot-gray" id="asyncStatusDot"></span>
+      <span id="asyncStatusText">Async?</span>
+    </div>
   </div>
   <button class="btn-demo" id="btnFullDemo" onclick="runFullDemo()">▶ Run Full Demo</button>
 </div>
@@ -771,6 +775,21 @@ async function checkHealth() {
     dot.className = 'dot dot-red'; txt.textContent = '无法连接'
     toast('连接失败: ' + e.message, 'err')
   }
+  // AsyncAIFlow 健康检查
+  const asyncDot = $('asyncStatusDot'), asyncTxt = $('asyncStatusText')
+  try {
+    const resp = await fetch(ASYNC_BASE() + '/health', {
+      signal: AbortSignal.timeout(3000),
+      headers: { 'Accept': 'application/json' },
+    })
+    if (resp.ok) {
+      asyncDot.className = 'dot dot-green'; asyncTxt.textContent = 'Async ✓'
+    } else {
+      asyncDot.className = 'dot dot-red'; asyncTxt.textContent = 'Async ' + resp.status
+    }
+  } catch {
+    asyncDot.className = 'dot dot-red'; asyncTxt.textContent = 'Async ✗'
+  }
 }
 
 /* ─── AsyncAIFlow API helpers ─────────────────────────────────── */
@@ -820,9 +839,9 @@ async function doPreview() {
     // Badge
     $('designBadge').textContent = `${ds.triggers.length} triggers`
 
-    // Score (from summary)
+    // Score (real completeness_score from backend, fallback to heuristic)
     $('scoreArea').style.display = 'block'
-    const scoreVal = es.is_empty ? 0 : 0.9
+    const scoreVal = r.completeness_score != null ? r.completeness_score : (es.is_empty ? 0 : 0.9)
     renderScore(scoreVal)
 
     // Issues
@@ -971,20 +990,32 @@ function toggleCand(id) {
 async function doApplyBestSpec() {
   if (!_lastBestSpec) { toast('没有可用的最优 Spec', 'err'); return }
   const levelId = $('levelId').value.trim()
+  const playerId = $('playerId').value.trim()
   if (!levelId) { toast('请填写 level_id', 'err'); return }
+  if (!playerId) { toast('请填写 player_id', 'err'); return }
   const btn = event.target
   await withSpin(btn, async () => {
-    // 直接用最优 spec 重新注入：需要 /experience/apply-spec 或利用 simulate 预览
-    // 展示最优 spec JSON 区域下载为文本以供设计者审阅
-    const specJson = JSON.stringify(_lastBestSpec, null, 2)
-    const blob = new Blob([specJson], { type: 'application/json' })
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href     = url
-    a.download = `${levelId}_optimized_spec.json`
-    a.click()
-    URL.revokeObjectURL(url)
-    toast('最优 Spec 已下载为 JSON，可手动应用到关卡', 'ok')
+    const r = await POST('/experience/apply-spec', {
+      level_id: levelId,
+      player_id: playerId,
+      spec: _lastBestSpec,
+    })
+    if (r.error) throw new Error(typeof r.error === 'string' ? r.error : JSON.stringify(r.error))
+    const es = r.experience_spec_summary || {}
+    $('injectBadge').textContent = '✔ optimized'
+
+    let html = kv('status', 'optimized spec applied', 'green')
+    html += kv('level_id', esc(r.level_id || levelId), 'blue')
+    html += kv('rule_count', es.rule_count ?? '—')
+    html += kv('trigger_count', es.trigger_count ?? '—')
+    html += kv('method', 'apply-spec (Auto Balance)', 'purple')
+    const el = $('injectResult')
+    el.className = 'result-block'
+    el.innerHTML = html
+
+    toast('最优 Spec 已应用到关卡！', 'ok')
+    setWorkflowStep(4)
+    await doRefreshState()
   }).catch(e => { toast('Apply 失败: ' + e.message, 'err') })
 }
 
@@ -1136,6 +1167,10 @@ function setWorkflowStep(n) {
    ② Publish: inject + load combined (Phase 5: multi-mode)
 ──────────────────────────────────────────────────────────────── */
 async function doPublish() {
+  // 主动清理上一次的轮询 timer（防止连续快速提交时叠加）
+  if (_wfPollTimer) { clearInterval(_wfPollTimer); _wfPollTimer = null }
+  if (_evoPollTimer) { clearInterval(_evoPollTimer); _evoPollTimer = null }
+
   const btn = event.target
   const text = $('designText').value.trim()
   const levelId = $('levelId').value.trim()
@@ -1653,7 +1688,7 @@ async function doRefreshTimeline() {
           <div class="tl-event">${esc(e.event || '—')}
             ${e.outcome ? `<span class="tl-${isWin?'win':isLose?'lose':'none'}" style="margin-left:6px;font-size:11px">${esc(e.outcome.toUpperCase())}</span>` : ''}
           </div>
-          <div class="tl-meta">#${i+1} · ${stateStr || '—'}</div>
+          <div class="tl-meta">#${i+1}${e.ts_ms ? ' · ' + new Date(e.ts_ms).toLocaleTimeString() : ''} · ${stateStr || '—'}</div>
         </div>
       </div>`
     }).join('')

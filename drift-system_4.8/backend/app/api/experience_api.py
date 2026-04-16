@@ -17,6 +17,7 @@ Phase 7 (Authoring):
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Body, HTTPException
@@ -326,14 +327,18 @@ def preview_experience_design(req: _PreviewRequest) -> Dict[str, Any]:
     if not text:
         raise HTTPException(status_code=400, detail="text 不能为空")
 
+    from app.core.runtime.experience_design_parser import validate_design_spec
+
     design = parse_design_text(text)
     exp_spec = to_experience_spec(design)
     warnings = generate_warnings(design)
     summary = experience_spec_summary(exp_spec)
+    _, completeness_score = validate_design_spec(design)
 
     return {
         "design_spec": design.to_dict(),
         "experience_spec_summary": summary,
+        "completeness_score": completeness_score,
         "warnings": warnings,
     }
 
@@ -529,3 +534,60 @@ def optimize_level(req: _OptimizeRequest) -> Dict[str, Any]:
     result = find_best_spec(spec, target_win_rate=target, k=k, n_sim=n_sim)
     result["level_id"] = req.level_id or "(inline)"
     return result
+
+
+# =====================================================================
+# Phase 11B：Apply Optimized Spec -> 关卡注入
+# =====================================================================
+
+class _ApplySpecRequest(BaseModel):
+    level_id: str
+    player_id: str
+    spec: Dict[str, Any]  # ExperienceSpec JSON (from Auto Balance)
+
+
+@router.post("/apply-spec")
+def apply_optimized_spec(req: _ApplySpecRequest) -> Dict[str, Any]:
+    """
+    将 Auto Balance 产出的最优 ExperienceSpec 直接写入关卡文件并激活。
+    面板 "Apply Best Spec" 按钮调用此端点，实现 P11 优化→注入的完整闭环。
+    """
+    import json as _json
+    from app.core.runtime.experience_spec_compiler import experience_spec_summary
+
+    level_id = str(req.level_id).strip()
+    player_id = str(req.player_id).strip()
+
+    level_doc = _load_level_doc(level_id)
+    if level_doc is None:
+        raise HTTPException(status_code=404, detail=f"Level '{level_id}' not found")
+
+    # 写入 spec 并持久化
+    level_doc.setdefault("meta", {})["experience_spec"] = req.spec
+
+    level_file = _load_level_doc.__doc__  # 借用辅助函数，但需要自己定位文件路径
+    _levels_dir = os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "content", "levels"
+    )
+    level_path = os.path.join(_levels_dir, f"{level_id}.json")
+    if os.path.exists(level_path):
+        with open(level_path, "w", encoding="utf-8") as f:
+            _json.dump(level_doc, f, ensure_ascii=False, indent=2)
+
+    # 将新 spec 接入运行时（若玩家当前已加载该关卡）
+    try:
+        from app.core.runtime.experience_debug_store import ExperienceDebugStore
+        store = ExperienceDebugStore.get_instance()
+        store.clear_player(player_id)   # 清除旧 debug 快照，避免残留
+    except Exception:
+        pass
+
+    summary = experience_spec_summary(req.spec)
+    return {
+        "status": "ok",
+        "level_id": level_id,
+        "player_id": player_id,
+        "experience_spec_summary": summary,
+        "method": "apply-spec",
+    }
+

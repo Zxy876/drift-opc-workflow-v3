@@ -21,8 +21,8 @@ const http = require('http')
 // ─── 加载配置 ─────────────────────────────────────────────
 let config = {
   drift: {
-    mc_server: { host: '35.201.132.58', port: 25565 },
-    backend_url: 'http://35.201.132.58:8000',
+    mc_server: { host: process.env.MC_HOST || 'localhost', port: parseInt(process.env.MC_PORT || '25565') },
+    backend_url: process.env.DRIFT_URL || 'http://localhost:8000',
   },
   bot: { username: 'DriftRLAgent', bridge_port: 9999 },
 }
@@ -35,7 +35,7 @@ try {
   console.log(`[Config] 使用默认配置 (${err.message})`)
 }
 
-const MC_HOST = config.drift?.mc_server?.host || '35.201.132.58'
+const MC_HOST = config.drift?.mc_server?.host || process.env.MC_HOST || 'localhost'
 const MC_PORT = config.drift?.mc_server?.port || 25565
 const BOT_NAME = config.bot?.username || 'DriftRLAgent'
 const BRIDGE_PORT = config.bot?.bridge_port || 9999
@@ -52,7 +52,7 @@ let driftLastFetch = 0
  * 从 Drift 后端获取当前玩家关卡状态（异步）
  */
 function fetchDriftState() {
-  const DRIFT_URL = config.drift?.backend_url || 'http://35.201.132.58:8000'
+  const DRIFT_URL = config.drift?.backend_url || process.env.DRIFT_URL || 'http://localhost:8000'
   const BOT_NAME_ENCODED = encodeURIComponent(BOT_NAME)
   const url = `${DRIFT_URL}/story/status/${BOT_NAME_ENCODED}`
 

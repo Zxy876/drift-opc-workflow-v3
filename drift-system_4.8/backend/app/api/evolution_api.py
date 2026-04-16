@@ -13,7 +13,7 @@ import time
 import uuid
 from typing import Dict
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter(prefix="/evolution", tags=["evolution"])
 
@@ -68,10 +68,11 @@ async def start_evolution(body: dict):
     # 前置检查：Bot TCP Bridge 必须在运行
     bot_port = int(body.get("bot_port", 9999))
     if not _check_bot_bridge(bot_port):
-        return {
-            "error": f"Mineflayer Bot 未运行（端口 {bot_port} 不可达）。"
-                     "请先在服务器运行: node player/player_bot.js"
-        }
+        raise HTTPException(
+            status_code=503,
+            detail=f"Mineflayer Bot 未运行（端口 {bot_port} 不可达）。"
+                   "请先在服务器运行: node player/player_bot.js"
+        )
 
     # BUG-3 互斥检查：同一时间只允许一个 Evolution 会话
     running = [
@@ -80,11 +81,13 @@ async def start_evolution(body: dict):
         and s.get("process") and s["process"].poll() is None
     ]
     if running:
-        return {
-            "error": f"已有进化会话正在运行 (#{running[0]['session_id']})。"
-                     "请先停止现有会话再启动新的。",
-            "running_session": running[0]["session_id"]
-        }
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": f"已有进化会话正在运行 (#{running[0]['session_id']})。请先停止现有会话再启动新的。",
+                "running_session": running[0]["session_id"]
+            }
+        )
 
     session_id = str(uuid.uuid4())[:8]
     status_file = f"/tmp/evolution_{session_id}_status.json"
@@ -183,7 +186,7 @@ async def get_evolution_status(session_id: str):
     返回字段见 run_evolution.py / meta_agent.py _write_status() 结构。
     """
     if session_id not in _sessions:
-        return {"error": "session not found"}
+        raise HTTPException(status_code=404, detail="session not found")
 
     session = _sessions[session_id]
     result: dict = {
@@ -226,7 +229,7 @@ async def get_evolution_status(session_id: str):
 async def stop_evolution(session_id: str):
     """停止正在运行的进化循环（发 SIGINT，触发优雅退出）"""
     if session_id not in _sessions:
-        return {"error": "session not found"}
+        raise HTTPException(status_code=404, detail="session not found")
 
     session = _sessions[session_id]
     proc = session.get("process")
@@ -234,6 +237,9 @@ async def stop_evolution(session_id: str):
         try:
             proc.send_signal(signal.SIGINT)
             proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()   # SIGKILL 兜底
+            proc.wait(timeout=5)
         except Exception:
             proc.kill()
         session["status"] = "stopped"
@@ -256,3 +262,22 @@ async def list_sessions():
             for s in _sessions.values()
         ]
     }
+
+
+import atexit as _atexit
+
+def _cleanup_evolution_processes():
+    """后端退出时清理所有仍在运行的进化子进程，避免 orphan"""
+    for session in _sessions.values():
+        proc = session.get("process")
+        if proc and proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=5)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+
+_atexit.register(_cleanup_evolution_processes)

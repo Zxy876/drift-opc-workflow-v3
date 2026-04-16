@@ -10,7 +10,7 @@ const mineflayer = require('mineflayer')
 const { mineflayer: mineflayerViewer } = require('prismarine-viewer')
 
 // 配置（支持环境变量覆盖）
-const MC_HOST = process.env.MC_HOST || '35.201.132.58'
+const MC_HOST = process.env.MC_HOST || 'localhost'
 const MC_PORT = parseInt(process.env.MC_PORT || '25565')
 const BOT_NAME = process.env.BOT_NAME || 'DriftViewer'
 const VIEWER_PORT = parseInt(process.env.VIEWER_PORT || '3007')

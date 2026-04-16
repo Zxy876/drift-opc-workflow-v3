@@ -14,6 +14,7 @@ StrategyBot — 分层决策引擎
 """
 
 import math
+import os
 import random
 import re
 import time
@@ -34,7 +35,7 @@ class StrategyBot:
         skill: str = "average",
         level_id: str = "demo_001",
         player_id: str = "DriftRLAgent",
-        max_steps: int = 6000,
+        max_steps: int = 2000,
         tick_interval: float = 0.05,
         wall_timeout: float = 300.0,
     ):
@@ -64,7 +65,7 @@ class StrategyBot:
         self.level_goals: list[dict] = []
         self.goal_positions: list[tuple[float, float, float]] = []
         self.current_goal_idx: int = 0
-        self._drift_url: str = "http://35.201.132.58:8000"
+        self._drift_url: str = os.environ.get("DRIFT_URL", "http://localhost:8000")
 
     def reset(self):
         """重置一局的状态"""

@@ -24,8 +24,8 @@ class DesignerAgent:
 
     def __init__(
         self,
-        drift_url: str = "http://35.201.132.58:8000",
-        asyncaiflow_url: str = "http://35.201.132.58:8080",
+        drift_url: str = os.environ.get("DRIFT_URL", "http://localhost:8000"),
+        asyncaiflow_url: str = os.environ.get("ASYNCAIFLOW_URL", "http://localhost:8080"),
         llm_model: str = "glm-4",
         config_path: Optional[str] = None,
     ):
