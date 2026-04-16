@@ -367,6 +367,60 @@ textarea { min-height: 80px; }
   margin: 2px; background: #6e40c911;
 }
 .sg-edge { color: var(--text-dim); font-size: 11px; }
+
+/* ─── Evolution Timeline ───────────────────────────────────────── */
+.evo-timeline { display:flex; flex-direction:column; gap:8px; margin-top:8px; }
+.evo-card { border:1px solid var(--border2); border-radius:6px; background:var(--bg2); overflow:hidden; }
+.evo-card-header {
+  display:flex; align-items:center; gap:8px; padding:8px 10px;
+  cursor:pointer; user-select:none; transition:background 0.15s;
+}
+.evo-card-header:hover { background:var(--bg3); }
+.evo-gen-badge {
+  font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px;
+  border:1px solid var(--border2); background:var(--bg3); color:var(--text-dim); flex-shrink:0;
+}
+.evo-cr-badge { font-size:11px; font-weight:700; padding:2px 8px; border-radius:10px; flex-shrink:0; }
+.evo-cr-badge.cr-low  { background:#32120c44; border:1px solid var(--red);    color:var(--red); }
+.evo-cr-badge.cr-ok   { background:#0e221044; border:1px solid var(--green);  color:var(--green); }
+.evo-cr-badge.cr-high { background:#2a210344; border:1px solid var(--yellow); color:var(--yellow); }
+.evo-skill-bars { display:flex; gap:6px; flex:1; }
+.evo-skill-bar-wrap { display:flex; flex-direction:column; gap:2px; min-width:50px; }
+.evo-skill-label { font-size:9px; color:var(--text-dim); }
+.evo-skill-bar-bg { height:4px; background:#21262d; border-radius:2px; overflow:hidden; }
+.evo-skill-bar-fill { height:100%; border-radius:2px; transition:width 0.4s; }
+.evo-difficulty { font-size:9px; color:var(--purple); margin-left:auto; flex-shrink:0; }
+.evo-card-expand { font-size:10px; color:var(--text-dim); transition:transform 0.2s; }
+.evo-card-expand.open { transform:rotate(180deg); }
+.evo-card-body { border-top:1px solid var(--border2); padding:10px; display:none; }
+.evo-card-body.open { display:block; }
+.evo-tabs { display:flex; gap:0; margin-bottom:8px; border-bottom:1px solid var(--border2); }
+.evo-tab {
+  font-size:10px; padding:4px 10px; cursor:pointer; color:var(--text-dim);
+  border-bottom:2px solid transparent; margin-bottom:-1px; transition:color 0.15s, border-color 0.15s;
+}
+.evo-tab.active { color:var(--blue); border-bottom-color:var(--blue); }
+.evo-tab-panel { display:none; }
+.evo-tab-panel.active { display:block; }
+.evo-diff-line { font-size:10px; font-family:monospace; padding:1px 4px; border-radius:3px; margin:1px 0; }
+.evo-diff-line.add  { background:#0e221066; color:var(--green); }
+.evo-diff-line.rem  { background:#32120c66; color:var(--red); }
+.evo-diff-line.same { color:var(--text-dim); }
+.evo-hint-chip {
+  display:inline-block; font-size:9px; padding:2px 7px;
+  border-radius:10px; margin:2px; font-weight:600;
+}
+.evo-death-bar { height:6px; border-radius:3px; background:var(--red); margin:1px 0; transition:width 0.4s; }
+.evo-reasoning {
+  font-size:10px; color:var(--text); line-height:1.5;
+  background:var(--bg3); border-radius:4px; padding:6px 8px; margin-bottom:6px;
+}
+.evo-changes { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:6px; }
+.evo-change-chip {
+  font-size:9px; padding:2px 7px; border-radius:10px;
+  background:#0d1f33; border:1px solid var(--border2); color:var(--cyan);
+}
+.evo-summary-bar { display:flex; align-items:end; gap:3px; height:40px; margin:4px 0; }
 </style>
 </head>
 <body>
@@ -1895,6 +1949,17 @@ function updateEvolutionUI(r) {
   const designEl = $('evoDesign')
   if (designEl && r.design_text) designEl.textContent = '📝 ' + r.design_text.slice(0, 200)
 
+  // Real-time publishing phase: show new design reasoning
+  if (phase === 'publishing' && r.new_design_reasoning && designEl) {
+    const changes = (r.new_design_changes || []).slice(0, 3)
+    const chips = changes.map(c =>
+      `<span style="font-size:9px;padding:1px 6px;border-radius:8px;background:#0d1f33;border:1px solid var(--border2);color:var(--cyan)">${esc(c)}</span>`
+    ).join(' ')
+    designEl.innerHTML = `<div style="font-size:10px;color:var(--purple);font-weight:700;margin-bottom:3px">💡 设计改进中…</div>` +
+      `<div style="font-size:9px;color:var(--text);line-height:1.4">${esc(r.new_design_reasoning.slice(0, 150))}</div>` +
+      (chips ? `<div style="margin-top:3px">${chips}</div>` : '')
+  }
+
   // 高亮 pipeline 步骤（每代 3 步: Play=0, Eval=1, Design/Publishing=2）
   const phaseIdx = { playing: 0, evaluating: 1, designing: 2, publishing: 2 }[phase] ?? 0
   const totalGens = r.total_generations || 1
@@ -1916,20 +1981,179 @@ function showEvolutionResults(log) {
   const gens = log.generations || []
   if (!gens.length) return
   const summary = log.summary || {}
-  let html = `<div style="margin-top:6px"><div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:4px">🧬 进化完成</div>`
-  html += kv('总代数', String(summary.total_generations || gens.length), 'blue')
-  html += kv('最终通关率', ((summary.final_completion_rate || 0) * 100).toFixed(0) + '%', summary.in_flow_zone ? 'green' : 'red')
-  html += kv('Flow Zone', summary.in_flow_zone ? 'YES' : 'NO', summary.in_flow_zone ? 'green' : 'red')
-  html += `<div style="margin-top:6px;font-size:10px;color:var(--text-dim)">通关率趋势:</div>`
-  html += `<div style="display:flex;align-items:end;gap:3px;height:40px;margin-top:2px">`
+  const el = $('injectResult'); el.className = 'result-block'
+
+  const crFinal = (summary.final_completion_rate || 0)
+  const summaryHtml = [
+    `<div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:6px">🧬 进化完成</div>`,
+    kv('总代数', String(summary.total_generations || gens.length), 'blue'),
+    kv('最终通关率', (crFinal * 100).toFixed(0) + '%', summary.in_flow_zone ? 'green' : 'red'),
+    kv('Flow Zone', summary.in_flow_zone ? 'YES ✓' : 'NO', summary.in_flow_zone ? 'green' : 'red'),
+    `<div style="margin-top:4px;margin-bottom:2px;font-size:10px;color:var(--text-dim)">通关率趋势:</div>`,
+    `<div class="evo-summary-bar">` +
+    gens.map(g => {
+      const cr = g.eval?.completion_rate || 0
+      const h  = Math.max(2, cr * 40)
+      const c  = cr < 0.6 ? 'var(--red)' : cr <= 0.8 ? 'var(--green)' : 'var(--yellow)'
+      return `<div style="width:20px;height:${h}px;background:${c};border-radius:2px" title="G${g.generation}: ${(cr*100).toFixed(0)}%"></div>`
+    }).join('') + `</div>`,
+  ].join('')
+
+  el.innerHTML = summaryHtml + renderEvolutionTimeline(gens)
+}
+
+function renderEvolutionTimeline(gens) {
+  const skillColors = { beginner: 'var(--green)', average: 'var(--yellow)', expert: 'var(--red)' }
+  let html = `<div class="evo-timeline">`
   for (const g of gens) {
-    const cr = g.eval?.completion_rate || 0
-    const h  = Math.max(2, cr * 40)
-    const c  = (cr >= 0.6 && cr <= 0.8) ? 'var(--green)' : cr < 0.6 ? 'var(--red)' : 'var(--yellow)'
-    html += `<div style="width:20px;height:${h}px;background:${c};border-radius:2px" title="G${g.generation}: ${(cr*100).toFixed(0)}%"></div>`
+    const gen     = g.generation ?? 0
+    const ev      = g.eval || {}
+    const cr      = ev.completion_rate ?? 0
+    const crPct   = (cr * 100).toFixed(0)
+    const crClass = cr < 0.6 ? 'cr-low' : cr <= 0.8 ? 'cr-ok' : 'cr-high'
+    const skills  = ev.skill_results || {}
+    const diff    = ev.difficulty_assessment || ''
+    const nd      = g.new_design || {}
+    const cardId  = `evoCard${gen}`
+
+    const skillBarsHtml = ['beginner', 'average', 'expert'].map(sk => {
+      const pct = ((skills[sk] || 0) * 100).toFixed(0)
+      return `<div class="evo-skill-bar-wrap">
+        <div class="evo-skill-label">${sk.slice(0,3)} ${pct}%</div>
+        <div class="evo-skill-bar-bg"><div class="evo-skill-bar-fill" style="width:${pct}%;background:${skillColors[sk]}"></div></div>
+      </div>`
+    }).join('')
+
+    html += `<div class="evo-card" id="${cardId}">
+      <div class="evo-card-header" onclick="toggleEvoCard('${cardId}')">
+        <div class="evo-gen-badge">G${gen}</div>
+        <div class="evo-cr-badge ${crClass}">${crPct}%</div>
+        <div class="evo-skill-bars">${skillBarsHtml}</div>
+        ${diff ? `<div class="evo-difficulty">${esc(diff)}</div>` : ''}
+        <div class="evo-card-expand" id="${cardId}Arrow">▼</div>
+      </div>
+      <div class="evo-card-body" id="${cardId}Body">
+        <div class="evo-tabs">
+          <div class="evo-tab active" id="${cardId}TabDesign" onclick="switchEvoTab('${cardId}','design')">设计对比</div>
+          <div class="evo-tab" id="${cardId}TabEval" onclick="switchEvoTab('${cardId}','eval')">评估数据</div>
+        </div>
+        <div class="evo-tab-panel active" id="${cardId}PanelDesign">
+          ${renderEvoDiff(gen, g.design || '', nd.design_text || '', nd.reasoning || '', nd.changes || [])}
+        </div>
+        <div class="evo-tab-panel" id="${cardId}PanelEval">
+          ${renderEvoEvalDashboard(ev)}
+        </div>
+      </div>
+    </div>`
   }
-  html += `</div></div>`
-  const el = $('injectResult'); el.className = 'result-block'; el.innerHTML = html
+  html += `</div>`
+  return html
+}
+
+function toggleEvoCard(cardId) {
+  const body  = document.getElementById(cardId + 'Body')
+  const arrow = document.getElementById(cardId + 'Arrow')
+  if (!body) return
+  const open = body.classList.contains('open')
+  body.classList.toggle('open', !open)
+  if (arrow) arrow.classList.toggle('open', !open)
+}
+
+function switchEvoTab(cardId, tab) {
+  const panels = { design: cardId + 'PanelDesign', eval: cardId + 'PanelEval' }
+  const tabs   = { design: cardId + 'TabDesign',   eval: cardId + 'TabEval' }
+  for (const [key, pid] of Object.entries(panels)) {
+    const pel = document.getElementById(pid)
+    const tel = document.getElementById(tabs[key])
+    if (pel) pel.classList.toggle('active', key === tab)
+    if (tel) tel.classList.toggle('active', key === tab)
+  }
+}
+
+function simpleDiff(oldText, newText) {
+  const split = s => (s || '').split(/[。！？\n]/).map(x => x.trim()).filter(Boolean)
+  const oldLines = split(oldText)
+  const newLines = split(newText)
+  const oldSet = new Set(oldLines)
+  const newSet = new Set(newLines)
+  const result = []
+  for (const l of oldLines) if (!newSet.has(l)) result.push({ type: 'rem', text: l })
+  for (const l of newLines) if (!oldSet.has(l)) result.push({ type: 'add', text: l })
+  for (const l of newLines) if (oldSet.has(l))  result.push({ type: 'same', text: l })
+  return result
+}
+
+function renderEvoDiff(gen, oldDesign, newDesign, reasoning, changes) {
+  if (!newDesign) {
+    return `<div style="color:var(--text-dim);font-size:10px">${gen === 0 ? '初代设计（无前代对比）' : '无改进设计'}</div>`
+  }
+  const diffLines  = simpleDiff(oldDesign, newDesign)
+  const diffHtml   = diffLines.slice(0, 20).map(d =>
+    `<div class="evo-diff-line ${d.type}">${d.type === 'add' ? '+ ' : d.type === 'rem' ? '- ' : '  '}${esc(d.text)}</div>`
+  ).join('')
+  const changeChips = changes.length
+    ? `<div class="evo-changes">${changes.map(c => `<span class="evo-change-chip">${esc(c)}</span>`).join('')}</div>`
+    : ''
+  return [
+    reasoning ? `<div class="evo-reasoning">💡 ${esc(reasoning)}</div>` : '',
+    changeChips,
+    diffLines.length ? `<div>${diffHtml}</div>` : `<div style="color:var(--text-dim);font-size:10px">设计未变更</div>`,
+  ].join('')
+}
+
+function renderEvoEvalDashboard(ev) {
+  const deaths   = ev.death_causes || {}
+  const stuck    = ev.stuck_points || []
+  const hints    = ev.adjustment_hints || []
+  const easyPct  = ((ev.skill_results?.beginner || 0) * 100).toFixed(0)
+  const hintColors = {
+    REDUCE_MOB_COUNT: 'var(--red)', REDUCE_FALL: 'var(--orange)',
+    ADD_SUPPLIES: 'var(--green)', INCREASE_DIFFICULTY_SMALL: 'var(--blue)',
+  }
+
+  const deathEntries = Object.entries(deaths)
+  const maxDeathCnt  = Math.max(1, ...deathEntries.map(([, v]) => v))
+  const deathHtml = deathEntries.length
+    ? deathEntries.map(([cause, cnt]) =>
+        `<div style="display:flex;align-items:center;gap:6px;margin:3px 0">
+          <div style="font-size:9px;color:var(--text-dim);width:80px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis">${esc(cause)}</div>
+          <div style="flex:1;height:6px;background:#21262d;border-radius:3px;overflow:hidden">
+            <div class="evo-death-bar" style="width:${(cnt / maxDeathCnt * 100).toFixed(0)}%"></div>
+          </div>
+          <div style="font-size:9px;color:var(--text-dim);width:20px;text-align:right">${cnt}</div>
+        </div>`).join('')
+    : `<div style="font-size:10px;color:var(--text-dim)">无死亡数据</div>`
+
+  const stuckHtml = stuck.length
+    ? stuck.slice(0, 5).map(s => `<div style="font-size:9px;color:var(--text-dim)">→ ${esc(String(s))}</div>`).join('')
+    : `<div style="font-size:10px;color:var(--text-dim)">无卡住记录</div>`
+
+  const hintsHtml = hints.length
+    ? hints.map(h => {
+        const col = hintColors[h] || 'var(--text-dim)'
+        return `<span class="evo-hint-chip" style="background:${col}22;border:1px solid ${col};color:${col}">${esc(h)}</span>`
+      }).join('')
+    : `<span style="font-size:10px;color:var(--text-dim)">无建议</span>`
+
+  return `
+    <div style="margin-bottom:8px">
+      <div style="font-size:10px;font-weight:700;color:var(--orange);margin-bottom:4px">死亡原因</div>
+      ${deathHtml}
+    </div>
+    <div style="margin-bottom:8px">
+      <div style="font-size:10px;font-weight:700;color:var(--yellow);margin-bottom:4px">卡住点</div>
+      ${stuckHtml}
+    </div>
+    <div style="margin-bottom:8px">
+      <div style="font-size:10px;font-weight:700;color:var(--blue);margin-bottom:4px">调整建议</div>
+      <div>${hintsHtml}</div>
+    </div>
+    <div>
+      <div style="font-size:10px;font-weight:700;color:var(--green);margin-bottom:4px">初级玩家通过率 ${easyPct}%</div>
+      <div style="height:6px;background:#21262d;border-radius:3px;overflow:hidden">
+        <div style="height:100%;width:${easyPct}%;background:var(--green);border-radius:3px;transition:width 0.4s"></div>
+      </div>
+    </div>`
 }
 
 async function stopEvolution() {

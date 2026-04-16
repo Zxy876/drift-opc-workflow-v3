@@ -252,6 +252,10 @@ class MetaAgent:
                 "generation": gen,
                 "total_generations": self.max_generations,
                 "new_design": new_design.get("design_text", ""),
+                "new_design_reasoning": new_design.get("reasoning", ""),
+                "new_design_changes": new_design.get("changes", []),
+                "new_design_text": new_design.get("design_text", ""),
+                "old_design_text": current_design,
                 "design_text": current_design,
                 "history": history,
             })
