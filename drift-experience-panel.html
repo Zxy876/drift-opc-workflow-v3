@@ -1187,7 +1187,7 @@ async function doPublish() {
     return
   }
   if (_publishMode === 'premium') {
-    await doPublishAsyncAIFlow(btn, text, levelId, playerId, 5)
+    await doPublishPremium(btn, text, levelId, playerId)
     return
   }
   if (_publishMode === 'evolution') {
@@ -1244,7 +1244,42 @@ async function doPublishQuick(btn, text, levelId, playerId) {
   }).catch(e => { toast('Publish 失败: ' + e.message, 'err') })
 }
 
-/** Standard / Premium Publish: submit to AsyncAIFlow, then poll workflow status */
+/** Premium Publish: Beam Search + 叙事弧，通过 drift_experience worker */
+async function doPublishPremium(btn, text, levelId, playerId) {
+  await withSpin(btn, async () => {
+    const body = {
+      issue: text,
+      repo_context: 'drift_experience',
+      difficulty: 5,
+      player_id: playerId,
+      premium_config: {
+        n_variants: 3,
+        meta_rounds: 2,
+        beam_width: 2,
+        score_threshold: 0.72,
+        use_narrative_arc: true,
+      }
+    }
+    const r = await asyncApi('POST', '/planner/execute', body)
+    const data = r.data || r
+    const workflowId = data.workflowId || data.workflow_id
+    if (!workflowId) throw new Error('AsyncAIFlow 未返回 workflowId')
+    _activeWorkflowId = workflowId
+    $('injectBadge').textContent = '⚙ Premium #' + workflowId
+    showWorkflowMonitor(workflowId, 'premium')
+    startWorkflowPolling(workflowId, playerId, levelId)
+    const el = $('injectResult')
+    el.className = 'result-block'
+    el.innerHTML = kv('status', 'Premium workflow submitted', 'blue')
+      + kv('workflowId', esc(String(workflowId)), 'cyan')
+      + kv('mode', 'Beam Search + 叙事弧', 'purple')
+      + kv('beam_width', '2 paths', 'green')
+      + kv('rounds', '2 rounds', 'green')
+    toast(`Premium #${workflowId} 已提交（Beam Search + 叙事弧）`, 'ok')
+  }).catch(e => { toast('Premium 提交失败: ' + e.message, 'err') })
+}
+
+/** Standard Publish: submit to AsyncAIFlow, then poll workflow status */
 async function doPublishAsyncAIFlow(btn, text, levelId, playerId, difficulty) {
   await withSpin(btn, async () => {
     // Submit to AsyncAIFlow /planner/execute
@@ -1277,7 +1312,7 @@ async function doPublishAsyncAIFlow(btn, text, levelId, playerId, difficulty) {
     el.innerHTML = kv('status', 'workflow submitted', 'blue')
       + kv('workflowId', esc(String(workflowId)), 'cyan')
       + kv('difficulty', String(difficulty) + '★', 'purple')
-      + kv('mode', difficulty >= 5 ? 'drift_experience (Beam Search + Arc)' : 'AsyncAIFlow Pipeline', 'blue')
+      + kv('mode', 'AsyncAIFlow Pipeline D' + difficulty + '★', 'blue')
 
     toast(`AsyncAIFlow 工作流 #${workflowId} 已提交！`, 'ok')
   }).catch(e => { toast('AsyncAIFlow 提交失败: ' + e.message, 'err') })
@@ -1293,7 +1328,10 @@ function showWorkflowMonitor(workflowId, difficulty) {
   $('wfStatusLabel').style.color = 'var(--blue)'
 
   // Build pipeline steps based on difficulty
-  const steps = difficulty >= 5
+  const steps = difficulty === 'premium'
+    ? ['🔎 Beam Search', '📊 Score', '📋 Arc Plan', '🏗 Build Levels',
+       '🔄 State Graph', '🌍 World Patch', '📌 Notify', '🌊 Refresh']
+    : difficulty >= 5
     ? ['🔎 Search', '📋 Plan', '💻 Code', '🔍 Review', '🧪 Test', '🚀 Deploy', '📌 Git Push', '🌊 Refresh']
     : difficulty >= 4
     ? ['📋 Plan', '💻 Code', '🔍 Review', '🧪 Test', '🚀 Deploy', '📌 Git Push', '🌊 Refresh']
@@ -1350,6 +1388,21 @@ function startWorkflowPolling(workflowId, playerId, levelId) {
         toast('工作流完成！世界正在更新...', 'ok')
         setWorkflowStep(4)
 
+        // Premium mode: render Beam Search + Arc result if available
+        if (_publishMode === 'premium') {
+          try {
+            const actions = wf.actions || []
+            let actionResult = null
+            for (const a of actions) {
+              const res = a.result || {}
+              if (res.exp_result || res.arc_result) { actionResult = res; break }
+            }
+            if (actionResult) {
+              $('injectResult').innerHTML = renderPremiumResult(actionResult)
+            }
+          } catch(e) { /* fallback to default render */ }
+        }
+
         // Sync timeline and state
         await syncAfterWorkflow(workflowId, playerId, levelId)
 
@@ -1379,6 +1432,33 @@ function startWorkflowPolling(workflowId, playerId, levelId) {
     }
   }, 3000)
   _wfPollTimer = myTimer
+}
+
+/** Render Premium Beam Search + Arc result into injectResult panel */
+function renderPremiumResult(result) {
+  const exp = result.exp_result || {}
+  const arc = result.arc_result || {}
+  const sg = result.state_graph || []
+  let html = kv('best_score', ((result.best_score || 0) * 100).toFixed(1) + '%', 'green')
+    + kv('best_level', result.best_level_id || '-', 'cyan')
+    + kv('arc_title', arc.arc_title || '-', 'purple')
+    + kv('levels', (arc.succeed_count || 0) + '/' + (arc.level_count || 0), 'blue')
+    + kv('total_beats', String(arc.total_beats || 0), 'blue')
+  if (exp.rounds && exp.rounds.length > 0) {
+    html += '<div style="margin-top:6px;color:var(--dim)">── Beam Search ──</div>'
+    exp.rounds.forEach(function(r) {
+      html += kv('Round ' + r.round, r.candidates_count + ' candidates → best=' + ((r.best_score || 0) * 100).toFixed(1) + '%', 'gray')
+    })
+  }
+  if (sg.length > 0) {
+    html += '<div style="margin-top:6px;color:var(--dim)">── State Graph ──</div>'
+    sg.forEach(function(s, i) {
+      var inv = (s.inventory || []).join(',')
+      var flags = (s.flags || []).join(',')
+      html += kv('L' + (i + 1), s.completed_level + ' | inv=[' + inv + '] | [' + flags + ']', 'gray')
+    })
+  }
+  return html
 }
 
 /** Update pipeline step indicators based on workflow action statuses */
