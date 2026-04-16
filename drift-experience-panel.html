@@ -2011,7 +2011,7 @@ function renderEvolutionTimeline(gens) {
     const cr      = ev.completion_rate ?? 0
     const crPct   = (cr * 100).toFixed(0)
     const crClass = cr < 0.6 ? 'cr-low' : cr <= 0.8 ? 'cr-ok' : 'cr-high'
-    const skills  = ev.skill_results || {}
+    const skills  = ev.completion_by_skill || ev.skill_results || {}
     const diff    = ev.difficulty_assessment || ''
     const nd      = g.new_design || {}
     const cardId  = `evoCard${gen}`
@@ -2103,12 +2103,20 @@ function renderEvoDiff(gen, oldDesign, newDesign, reasoning, changes) {
 
 function renderEvoEvalDashboard(ev) {
   const deaths   = ev.death_causes || {}
-  const stuck    = ev.stuck_points || []
+  const stuckRaw     = ev.stuck_points || {}
+  const stuckEntries = Array.isArray(stuckRaw) ? stuckRaw.map(s => [String(s), 1]) : Object.entries(stuckRaw)
   const hints    = ev.adjustment_hints || []
-  const easyPct  = ((ev.skill_results?.beginner || 0) * 100).toFixed(0)
+  const easyPct  = ((ev.completion_by_skill?.beginner || ev.skill_results?.beginner || 0) * 100).toFixed(0)
   const hintColors = {
-    REDUCE_MOB_COUNT: 'var(--red)', REDUCE_FALL: 'var(--orange)',
-    ADD_SUPPLIES: 'var(--green)', INCREASE_DIFFICULTY_SMALL: 'var(--blue)',
+    REDUCE_MOB_COUNT: 'var(--red)',
+    REDUCE_FALL_HAZARDS: 'var(--orange)',
+    REDUCE_COMBAT: 'var(--red)',
+    ADD_SUPPLIES: 'var(--green)',
+    INCREASE_DIFFICULTY_SMALL: 'var(--blue)',
+    INCREASE_DIFFICULTY_LARGE: 'var(--blue)',
+    REDUCE_DIFFICULTY_SMALL: 'var(--yellow)',
+    REDUCE_DIFFICULTY_LARGE: 'var(--yellow)',
+    REDUCE_WATER_HAZARDS: 'var(--cyan)',
   }
 
   const deathEntries = Object.entries(deaths)
@@ -2124,8 +2132,8 @@ function renderEvoEvalDashboard(ev) {
         </div>`).join('')
     : `<div style="font-size:10px;color:var(--text-dim)">无死亡数据</div>`
 
-  const stuckHtml = stuck.length
-    ? stuck.slice(0, 5).map(s => `<div style="font-size:9px;color:var(--text-dim)">→ ${esc(String(s))}</div>`).join('')
+  const stuckHtml = stuckEntries.length
+    ? stuckEntries.slice(0, 5).map(([pos, cnt]) => `<div style="font-size:9px;color:var(--text-dim)">→ ${esc(pos)} ×${cnt}</div>`).join('')
     : `<div style="font-size:10px;color:var(--text-dim)">无卡住记录</div>`
 
   const hintsHtml = hints.length
