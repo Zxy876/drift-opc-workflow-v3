@@ -3260,7 +3260,7 @@ def _bridge_exp_spec_to_world_patch(
             })
 
         elif ttype == "timer":
-            duration = int(trigger.get("duration", 60))
+            duration = int(trigger.get("duration", trigger.get("quantity", 60)))
             trigger_zones.append({
                 "id": tid,
                 "quest_event": f"exp_timer_{duration}s",

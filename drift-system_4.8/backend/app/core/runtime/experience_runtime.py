@@ -191,12 +191,16 @@ def _derive_trigger_quest_event(trigger: Dict[str, Any], level_id: str) -> Optio
         return f"exp_lever_toggle_{target}" if target else f"exp_lever_toggle_{level_id}"
     elif ttype == "checkpoint_reach":
         return f"exp_checkpoint_reach_{target}" if target else f"exp_checkpoint_reach_{level_id}"
+    elif ttype == "course_complete":
+        return f"exp_course_complete_{target}" if target else f"exp_course_complete_{level_id}"
     elif ttype == "fall_detect":
         return f"exp_fall_detect_{level_id}"
     elif ttype == "wave_start":
         return f"exp_wave_start_{target}" if target else f"exp_wave_start_{level_id}"
     elif ttype == "wave_clear":
         return f"exp_wave_clear_{target}" if target else f"exp_wave_clear_{level_id}"
+    elif ttype == "wave_spawn":
+        return f"exp_wave_start_{target}" if target else f"exp_wave_start_{level_id}"
     elif ttype == "mob_kill":
         return f"exp_mob_kill_{target}" if target else f"exp_mob_kill_{level_id}"
     elif ttype == "player_damage":
@@ -266,6 +270,10 @@ def _infer_trigger_from_quest_event(quest_event: str) -> Optional[Dict[str, Any]
     if qe.startswith("exp_checkpoint_reach_") or qe.startswith("checkpoint_reach_"):
         target = qe.split("_", 3)[-1] if "_" in qe else "checkpoint"
         return {"type": "checkpoint_reach", "target": target, "_inferred": True}
+
+    if qe.startswith("exp_course_complete_") or qe.startswith("course_complete_"):
+        target = qe.split("_", 3)[-1] if "_" in qe else "course"
+        return {"type": "course_complete", "target": target, "_inferred": True}
 
     if qe.startswith("exp_fall_detect_") or qe.startswith("fall_detect_"):
         target = qe.split("_", 3)[-1] if "_" in qe else "ground"

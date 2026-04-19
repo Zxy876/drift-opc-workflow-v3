@@ -722,7 +722,7 @@ class StrategyBot:
     def _handle_survival_combat(self, state: dict):
         """生存战斗: 攻击最近的敌对实体"""
         entities = state.get("nearby_entities", [])
-        hostiles = [e for e in entities if e.get("type") in ("zombie", "skeleton", "spider", "creeper")]
+        hostiles = [e for e in entities if e.get("type") in ("mob", "hostile", "zombie", "skeleton", "spider", "creeper")]
         if hostiles:
             nearest = min(hostiles, key=self._entity_dist)
             self._broadcast("ACTION", f"⚔ 攻击: {nearest.get('type', '?')}")
