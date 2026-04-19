@@ -38,6 +38,7 @@ class StrategyBot:
         max_steps: int = 2000,
         tick_interval: float = 0.05,
         wall_timeout: float = 300.0,
+        broadcast: bool = True,
     ):
         self.client = client
         self.skill_name = skill
@@ -66,9 +67,24 @@ class StrategyBot:
         self.goal_positions: list[tuple[float, float, float]] = []
         self.current_goal_idx: int = 0
         self._drift_url: str = os.environ.get("DRIFT_URL", "http://localhost:8000")
+        self.broadcast_enabled = broadcast
+
+    def _broadcast(self, level: str, msg: str):
+        """通过 MC /botnarrate 命令广播 Bot 行为。"""
+        if not self.broadcast_enabled:
+            return
+        try:
+            # Keep command under typical MC chat command length constraints.
+            safe = str(msg or "").replace("\n", " ").strip()
+            if len(safe) > 220:
+                safe = safe[:220]
+            self.client.chat(f"/botnarrate {level} {safe}")
+        except Exception:
+            pass
 
     def reset(self):
         """重置一局的状态"""
+        self._broadcast("INFO", f"🔄 重置关卡 {self.level_id}")
         self.steps = 0
         self.visited_positions = set()
         self.prev_position = None
@@ -121,9 +137,11 @@ class StrategyBot:
         """
         state = self.reset()
         start_time = time.time()
+        self._broadcast("INFO", f"▶ Episode 开始 (技能: {self.skill_name}, 关卡: {self.level_id})")
 
         # BUG-C: reset 阶段 Bot 就没就绪，返回无效局标记
         if state.get("error") == "bot_not_ready":
+            self._broadcast("INFO", "■ Episode 结束: Bot 未就绪")
             return {
                 "completed": False, "time": 0, "deaths": 0,
                 "easy_used": False, "death_causes": [],
@@ -203,6 +221,10 @@ class StrategyBot:
             pass
 
         elapsed = time.time() - start_time
+        self._broadcast(
+            "INFO",
+            f"■ Episode 结束: {self.steps} 步, {self.deaths} 死亡, 通关={'是' if self.level_completed else '否'}",
+        )
 
         return {
             "completed": self.level_completed,
@@ -235,6 +257,7 @@ class StrategyBot:
 
         # ── 1. DANGER: 低血量处理 ──
         if health < self.profile["flee_health_threshold"]:
+            self._broadcast("ACTION", f"⚠ 危险! 血量 {health}/20，触发逃跑")
             self._handle_danger(state)
             return
 
@@ -245,8 +268,11 @@ class StrategyBot:
             and self._entity_dist(e) < self.profile["combat_engage_dist"]
         ]
         if hostiles:
+            target = hostiles[0]
+            dist = self._entity_dist(target)
+            self._broadcast("ACTION", f"⚔ 战斗: 攻击 {target.get('name', '敌对实体')} (距离 {dist:.1f}m)")
             self.reaction_cooldown = self.profile["reaction_ticks"]
-            self._handle_combat(hostiles[0], pos)
+            self._handle_combat(target, pos)
             return
 
         # ── 3. GOAL-DIRECTED: 根据关卡目标行动 ──
@@ -273,6 +299,8 @@ class StrategyBot:
             or e.get("type") == "villager"
         ]
         if npcs and self.steps % self.profile["npc_interact_delay"] == 0:
+            npc = npcs[0]
+            self._broadcast("INFO", f"🗣 与 NPC \"{npc.get('name', '未知')}\" 交互")
             self._handle_npc(npcs[0], pos)
             return
 
@@ -283,6 +311,8 @@ class StrategyBot:
             and self._entity_dist(e) < self.profile["collect_item_dist"]
         ]
         if items:
+            item = items[0]
+            self._broadcast("INFO", f"📦 拾取物品: {item.get('name', '未知物品')}")
             self._handle_collect(items[0], pos)
             return
 
@@ -290,16 +320,20 @@ class StrategyBot:
         if self.stuck_counter >= self.profile["stuck_patience"]:
             self._handle_stuck(state)
         else:
+            self._broadcast("DEBUG", f"🧭 探索中 (半径 {self.profile['exploration_radius']})")
             self._handle_smart_explore(state)
 
     def _handle_danger(self, state: dict):
         """低血量：逃跑 / 吃食物 / 使用 /easy"""
         # 概率使用 /easy
         if not self.easy_used and random.random() < self.profile["use_easy_probability"]:
+            self._broadcast("ACTION", "⬇ 使用 /easy 降低难度")
             self.client.chat("/easy")
             self.easy_used = True
             print(f"    [{self.skill_name}] 使用 /easy（血量低）")
             return
+
+        self._broadcast("ACTION", f"🏃 逃离危险区域 (血量 {state.get('health', '?')})")
 
         # 逃跑：反方向跑
         entities = state.get("nearby_entities", [])
@@ -502,6 +536,8 @@ class StrategyBot:
                         )
                 if self.level_goals:
                     print(f"    [{self.skill_name}] 获取关卡目标: {self.level_goals}")
+                    goal_names = [g.get("target", g.get("type", "?")) for g in self.level_goals[:3]]
+                    self._broadcast("INFO", f"🎯 关卡目标: {', '.join(goal_names)}")
         except Exception as e:
             print(f"    [{self.skill_name}] 获取关卡目标失败: {e}")
 
@@ -522,12 +558,14 @@ class StrategyBot:
 
     def _handle_stuck(self, state: dict):
         """处理卡住状态"""
+        self._broadcast("INFO", f"🔄 卡住 {self.stuck_counter} tick，尝试恢复")
         pos = state.get("position", [0, 0, 0])
         self.stuck_positions.append(pos)
         self.stuck_counter = 0
 
         # 概率使用 /easy
         if not self.easy_used and random.random() < self.profile["use_easy_probability"]:
+            self._broadcast("ACTION", "⬇ 使用 /easy 降低难度")
             self.client.chat("/easy")
             self.easy_used = True
             print(f"    [{self.skill_name}] 使用 /easy（卡住）")

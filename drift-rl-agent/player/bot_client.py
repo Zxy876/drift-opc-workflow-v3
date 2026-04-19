@@ -114,6 +114,14 @@ class BotClient:
         """停止所有动作"""
         self.send({"type": "stop_all"})
 
+    def broadcast(self, level: str, msg: str) -> dict:
+        """通过 Bridge 调用 /botnarrate 广播消息。"""
+        return self.send({
+            "type": "broadcast",
+            "level": level,
+            "message": msg,
+        })
+
     def __enter__(self):
         self.connect()
         return self

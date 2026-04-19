@@ -148,7 +148,16 @@ commands:
     description: "[RCON/Console] 为在线玩家加载指定关卡（后端 push-load 专用）"
     usage: "/driftload <player_name> <level_id>"
 
+  botnarrate:
+    description: "DriftAgent 行为广播命令（Bot 内部使用）"
+    usage: "/botnarrate <CRITICAL|ACTION|INFO|DEBUG> <message>"
+    permission: "driftmc.botnarrate"
+
 permissions:
   drift.taskdebug:
     description: "访问任务调试工具"
+    default: op
+
+  driftmc.botnarrate:
+    description: "允许使用 /botnarrate 命令"
     default: op

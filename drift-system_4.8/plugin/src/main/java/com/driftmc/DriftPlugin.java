@@ -12,6 +12,7 @@ import com.driftmc.asyncaiflow.AsyncAIFlowClient;
 import com.driftmc.backend.BackendClient;
 import com.driftmc.cinematic.CinematicController;
 import com.driftmc.commands.AdvanceCommand;
+import com.driftmc.commands.BotNarrateCommand;
 import com.driftmc.commands.CinematicCommand;
 import com.driftmc.commands.CreateLevelCommand;
 import com.driftmc.commands.DriftCommand;
@@ -236,6 +237,7 @@ public class DriftPlugin extends JavaPlugin {
         registerCommand("replay", new ReplayCommand(this, backend, worldPatcher));
         registerCommand("easy", new EasyCommand(this, backend, worldPatcher));
         registerCommand("driftload", new DriftLoadCommand(this, backend, worldPatcher));
+        registerCommand("botnarrate", new BotNarrateCommand());
         registerCommand("debugscene", new TaskDebugCommand(this, backend, taskDebugToken, TaskDebugCommand.ViewMode.SCENE));
         registerCommand("debuginventory", new TaskDebugCommand(this, backend, taskDebugToken, TaskDebugCommand.ViewMode.INVENTORY));
         registerCommand("predictscene", new TaskDebugCommand(this, backend, taskDebugToken, TaskDebugCommand.ViewMode.PREDICTION));

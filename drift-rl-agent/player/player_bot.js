@@ -99,6 +99,9 @@ async function getDriftState() {
     if (driftStateCache.status === 'completed' && !levelCompleted) {
       if (Date.now() - levelResetTime > 5000) {
         levelCompleted = true
+        if (bot && bot.entity) {
+          bot.chat('/botnarrate CRITICAL 🎉 DriftAgent 通关!')
+        }
         console.log('[Bot] 从 Drift 后端检测到通关')
       }
     }
@@ -110,6 +113,7 @@ let levelCompleted = false
 let lastDeathCause = null
 let triggersCompleted = 0
 let levelResetTime = 0  // BUG-A: 关卡重置时间戳，5s 保护窗防假阳性通关
+let pendingDeathBroadcast = null
 
 // ─── 创建 Bot ──────────────────────────────────────────────
 let bot = null
@@ -142,6 +146,11 @@ function createBot() {
     const mcData = require('minecraft-data')(bot.version)
     const defaultMove = new Movements(bot, mcData)
     bot.pathfinder.setMovements(defaultMove)
+
+    if (pendingDeathBroadcast) {
+      bot.chat(`/botnarrate CRITICAL 💀 DriftAgent 死亡: ${pendingDeathBroadcast}`)
+      pendingDeathBroadcast = null
+    }
   })
 
   bot.on('message', (message) => {
@@ -155,6 +164,9 @@ function createBot() {
         || text.includes('挑战成功')) {
       if (Date.now() - levelResetTime > 5000) {
         levelCompleted = true
+        if (bot && bot.entity) {
+          bot.chat('/botnarrate CRITICAL 🎉 DriftAgent 通关!')
+        }
         console.log('[Bot] 检测到通关!')
       } else {
         console.log(`[Bot] 忽略早期通关消息 (${Date.now() - levelResetTime}ms): ${text}`)
@@ -163,6 +175,9 @@ function createBot() {
     // 触发器检测（独立于通关检测）
     if (text.includes('触发') || text.includes('收集') || text.includes('完成任务')) {
       triggersCompleted++
+      if (bot && bot.entity) {
+        bot.chat(`/botnarrate INFO ✔ 触发器 ${triggersCompleted} 完成`)
+      }
     }
 
     console.log(`[Chat] ${text}`)
@@ -183,6 +198,11 @@ function createBot() {
       lastDeathCause = 'lava'
     } else {
       lastDeathCause = 'unknown'
+    }
+    pendingDeathBroadcast = lastDeathCause
+    if (bot && bot.entity) {
+      bot.chat(`/botnarrate CRITICAL 💀 DriftAgent 死亡: ${lastDeathCause}`)
+      pendingDeathBroadcast = null
     }
     console.log(`[Bot] 死亡 (原因: ${lastDeathCause})`)
   })
@@ -396,6 +416,16 @@ function handleCommand(cmd) {
         bot.chat(cmd.text)
       }
       return { ok: true, command: cmd.text }
+
+    case 'broadcast': {
+      const level = cmd.level || 'INFO'
+      const message = cmd.message || ''
+      if (bot && botReady && bot.entity) {
+        const safe = String(message).replace(/\n/g, ' ').slice(0, 220)
+        bot.chat(`/botnarrate ${level} ${safe}`)
+      }
+      return { ok: true }
+    }
 
     case 'reset':
       // 重置：加载指定关卡，清除本局状态标志
