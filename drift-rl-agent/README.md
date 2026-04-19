@@ -89,7 +89,7 @@ node viewer/viewer_server.js
 
 ## API 参考
 
-### Drift 后端 (35.201.132.58:8000)
+### Drift 后端 (104.155.195.245:8000)
 - `GET /story/levels` — 获取关卡列表
 - `POST /story/inject` — Quick Publish（直接注入关卡）
 - `GET /story/difficulty/{player_id}` — 获取玩家当前难度
@@ -97,9 +97,24 @@ node viewer/viewer_server.js
 - `POST /story/auto-advance/{player_id}` — 自动过关
 - `GET /story/state/{player_id}` — 获取玩家状态
 
-### AsyncAIFlow (35.201.132.58:8080)
+### AsyncAIFlow (104.155.195.245:8080)
 - `POST /planner/execute` — Premium Publish（AI 工作流全链路）
 - `GET /workflow/{id}` — 查询工作流状态
+
+## 云端游玩入口（当前 VM）
+
+- MC 服务器地址：`104.155.195.245:25565`
+- Experience Panel：`http://104.155.195.245:8000/panel/drift-experience-panel.html`
+- Drift Backend：`http://104.155.195.245:8000`
+- AsyncAIFlow：`http://104.155.195.245:8080`
+
+如果公网 IP 发生变化，使用以下命令获取最新地址：
+
+```bash
+gcloud compute instances describe drift-demo-vm \
+    --zone asia-east1-b \
+    --format='get(networkInterfaces[0].accessConfigs[0].natIP)'
+```
 
 ## TCP Bridge 协议
 

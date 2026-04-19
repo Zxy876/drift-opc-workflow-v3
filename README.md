@@ -217,6 +217,50 @@ python meta/run_evolution.py --level <level_id> --difficulty 3
 
 The bot plays the level, the designer redesigns it, and difficulty converges to the Flow Zone automatically.
 
+## Play Online (GCP VM)
+
+Use these addresses to play directly on the current cloud VM:
+
+- Minecraft server: `104.155.195.245:25565`
+- Experience Panel: `http://104.155.195.245:8000/panel/drift-experience-panel.html`
+- Drift Backend API: `http://104.155.195.245:8000`
+- AsyncAIFlow API: `http://104.155.195.245:8080`
+
+### How to Join Minecraft
+
+1. Open Minecraft 1.20.1 (Paper-compatible).
+2. Multiplayer -> Add Server.
+3. Server Address: `104.155.195.245:25565`
+4. Join and use in-game commands (for example `/create` or `/level <level_id>` depending on plugin config).
+
+### How to Open the Panel
+
+Open:
+
+`http://104.155.195.245:8000/panel/drift-experience-panel.html`
+
+Then design and publish levels from the browser.
+
+### If IP Changes: Fast Discovery Method
+
+Find the VM public IP (GCP):
+
+```bash
+gcloud compute instances describe drift-demo-vm \
+  --zone asia-east1-b \
+  --format='get(networkInterfaces[0].accessConfigs[0].natIP)'
+```
+
+Verify core endpoints after replacing `<IP>`:
+
+```bash
+curl -sf "http://<IP>:8000/levels" >/dev/null && echo "backend ok"
+curl -sf "http://<IP>:8080/workflows?page=0&size=1" >/dev/null && echo "asyncaiflow ok"
+python3 -c 'import socket; s=socket.socket(); s.settimeout(3); s.connect(("<IP>",25565)); print("mc ok"); s.close()'
+```
+
+If all three checks pass, the server is game-ready.
+
 ---
 
 ## Experience Panel
