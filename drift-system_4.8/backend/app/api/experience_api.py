@@ -36,6 +36,7 @@ from app.core.runtime.rule_document_generator import (
     generate_rule_document,
     rule_document_to_mc_tells,
 )
+from app.core.runtime.experience_spec_compiler import GAME_TYPE_SUPPORT_LEVEL
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -112,6 +113,9 @@ def get_experience_state(player_id: str) -> Dict[str, Any]:
     # 加载 exp_spec 生成进度摘要
     exp_spec = _load_exp_spec(level_id) if level_id else None
     progress_summary = summarize_progress(public_state, exp_spec, last_outcome)
+    game_type = (exp_spec or {}).get("game_type", "adventure") if isinstance(exp_spec, dict) else "adventure"
+    game_type_config = (exp_spec or {}).get("game_type_config", {}) if isinstance(exp_spec, dict) else {}
+    game_type_label = GAME_TYPE_SUPPORT_LEVEL.get(game_type, {}).get("label", "未知")
 
     # 时间线（精简）
     timeline = experience_debug_store.get_timeline(player_id)
@@ -132,6 +136,9 @@ def get_experience_state(player_id: str) -> Dict[str, Any]:
         "active_rules": progress_summary.get("active_rules", []),
         "timeline": timeline,
         "rule_document": rule_document,
+        "game_type": game_type,
+        "game_type_config": game_type_config,
+        "game_type_label": game_type_label,
     }
 
 

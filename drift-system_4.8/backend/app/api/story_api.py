@@ -3887,14 +3887,16 @@ def api_story_inject(payload: InjectPayload):
                 try:
                     _spec_warnings = validate_spec_completeness(_exp_spec)
                     if _spec_warnings:
-                        _exp_spec["_compile_warnings"] = _spec_warnings
-                        level_doc["meta"]["experience_warnings"] = _spec_warnings
+                        _existing_warnings = list(_exp_spec.get("_compile_warnings") or [])
+                        _merged_warnings = _existing_warnings + [w for w in _spec_warnings if w not in _existing_warnings]
+                        _exp_spec["_compile_warnings"] = _merged_warnings
+                        level_doc["meta"]["experience_warnings"] = _merged_warnings
                         logger.warning(
                             "experience_spec_warnings",
                             extra={
                                 "level_id": level_id,
-                                "warning_count": len(_spec_warnings),
-                                "warnings": _spec_warnings[:5],
+                                "warning_count": len(_merged_warnings),
+                                "warnings": _merged_warnings[:5],
                             },
                         )
                 except Exception:

@@ -36,10 +36,11 @@ _SYSTEM_PROMPT = """\
 只输出 JSON，禁止任何解释文字。
 必须包含以下字段：
 {
+    "game_type": "adventure|puzzle|parkour|racing|survival|stealth|board|quiz|build|tower_defense",
   "rules": [{"type": "win|lose|unlock|grant", "condition": "string", "desc": "string"}],
   "triggers": [
     {
-      "type": "proximity|interact|item_collect|timer|npc_talk|guard_detect",
+            "type": "proximity|interact|item_collect|timer|npc_talk|guard_detect|block_place|lever_toggle|checkpoint_reach|fall_detect|wave_start|wave_clear|mob_kill|player_damage|detection_alert|piece_place|turn_end|answer_submit|structure_match",
       "target": "string（语义名称，小写下划线，如 gem / altar / guard）",
       "action": "string",
       "desc": "string",
@@ -71,6 +72,21 @@ _SYSTEM_PROMPT = """\
     }
   ]
 }
+
+新增 game_type 字段（根据设计文本自动判断）：
+"game_type": "adventure|puzzle|parkour|racing|survival|stealth|board|quiz|build|tower_defense"
+
+各类型对应 trigger 关系：
+- adventure: proximity, interact, item_collect, timer, npc_talk, guard_detect
+- puzzle: interact, lever_toggle, block_place, item_collect
+- parkour: checkpoint_reach, fall_detect, timer, proximity
+- racing: checkpoint_reach, timer, proximity
+- survival: wave_start, wave_clear, mob_kill, player_damage, timer
+- stealth: detection_alert, guard_detect, proximity, timer
+- board: piece_place, turn_end, block_place
+- quiz: answer_submit, npc_talk, timer
+- build: block_place, structure_match, timer
+- tower_defense: wave_start, wave_clear, mob_kill, block_place
 
 【quest_event推导规则（beats必须用这个公式生成rule_refs）】
 - trigger type=item_collect, target=X  → quest_event = "exp_collect_X"
@@ -106,6 +122,43 @@ _SYSTEM_PROMPT = """\
         "controls_hint": "操作提示（用 | 分隔）"
     }
 }
+
+【游戏类型识别规则】
+根据设计文本识别游戏类型，输出到 "game_type" 字段：
+- 收集/到达/躲避/NPC -> adventure
+- 解谜/机关/拉杆/密码/逻辑 -> puzzle
+- 跑酷/跳跃/障碍/平台 -> parkour
+- 竞速/赛跑/最快/计时 -> racing
+- 生存/波次/怪物/防御 -> survival
+- 潜行/躲藏/不被发现 -> stealth
+- 棋/下棋/落子/对弈 -> board
+- 问答/答题/知识/竞猜 -> quiz
+- 建造/搭建/设计/复制 -> build
+- 塔防/放塔/守路/波次 -> tower_defense
+
+如果无法识别类型，默认 "adventure"。
+
+各类型 condition 写法示范：
+- puzzle win: "steps_completed >= 5" / "puzzle_solved >= 1"
+- parkour win: "checkpoints_reached >= 10" / "course_completed == 1"
+- racing win: "laps_completed >= 3"
+- survival win: "waves_survived >= 5"
+- stealth win: "areas_cleared >= 3" (lose: "times_detected >= 3")
+- board win: "winner == 1"
+- quiz win: "correct_count >= 7"
+- build win: "match_score >= 80"
+- tower_defense win: "waves_survived >= 10" (lose: "lives_remaining == 0")
+
+各类型 state 初始值示范：
+- puzzle: {"steps_completed": 0, "puzzle_solved": 0}
+- parkour: {"checkpoints_reached": 0, "falls_count": 0, "course_completed": 0}
+- racing: {"laps_completed": 0, "checkpoints_hit": 0, "race_time_ms": 0}
+- survival: {"current_wave": 0, "mobs_killed": 0, "player_health": 20, "waves_survived": 0}
+- stealth: {"stealth_level": 100, "times_detected": 0, "areas_cleared": 0}
+- board: {"moves_count": 0, "current_turn": 0, "winner": 0}
+- quiz: {"score": 0, "questions_answered": 0, "correct_count": 0}
+- build: {"blocks_placed": 0, "match_score": 0, "build_complete": 0}
+- tower_defense: {"towers_placed": 0, "enemies_killed": 0, "lives_remaining": 10, "gold": 100}
 """
 
 _FORBIDDEN_INPUTS = ("ignore previous", "忽略上面", "system:", "你现在是", "JAILBREAK")
@@ -118,6 +171,9 @@ def _empty_experience_spec() -> Dict[str, Any]:
     return {
         "spec_version": EXPERIENCE_SPEC_VERSION,
         "scene_class": "CONTENT",
+        "game_type": "adventure",
+        "game_type_confidence": 0.5,
+        "game_type_config": {},
         "rules": [],
         "triggers": [],
         "state": {
@@ -151,6 +207,246 @@ _PROXIMITY_KEYWORDS = ("靠近", "走近", "触碰", "进入", "step on", "enter
 _ITEM_COLLECT_KEYWORDS = ("捡起", "收集", "拾取", "获取", "pick up", "collect", "gather")
 _NPC_TALK_KEYWORDS = ("对话", "交谈", "询问", "说话", "talk to", "speak", "dialogue")
 _TIMER_KEYWORDS = ("时间", "倒计时", "限时", "秒内", "minutes", "timer", "countdown")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 游戏类型自动分类
+# ─────────────────────────────────────────────────────────────────────────────
+GAME_TYPE_KEYWORDS: Dict[str, Dict[str, List[str]]] = {
+    "puzzle": {
+        "zh": ["解谜", "谜题", "密码", "机关", "拼图", "逻辑", "开锁", "暗号", "线索", "推理", "密室", "解密", "破解", "钥匙", "锁", "按钮", "拉杆", "压力板", "红石"],
+        "en": ["puzzle", "riddle", "cipher", "mechanism", "logic", "combination", "clue", "mystery", "lever", "button", "pressure plate", "redstone"],
+    },
+    "parkour": {
+        "zh": ["跑酷", "跳跃", "攀爬", "障碍", "平台", "空中", "跳台", "赛道", "关卡跳"],
+        "en": ["parkour", "jump", "climb", "obstacle course", "platform", "obby"],
+    },
+    "racing": {
+        "zh": ["竞速", "赛跑", "比赛", "速度", "冲刺", "赛道", "圈速", "最快"],
+        "en": ["race", "racing", "speed run", "sprint", "track", "lap", "fastest", "time trial"],
+    },
+    "survival": {
+        "zh": ["生存", "波次", "防御", "抵挡", "存活", "怪物潮", "僵尸围城", "守护", "击杀", "怪物", "血量", "治疗"],
+        "en": ["survive", "wave", "defend", "horde", "zombie", "protect", "last stand", "mob", "health", "heal", "combat"],
+    },
+    "stealth": {
+        "zh": ["潜行", "隐匿", "躲藏", "不被发现", "偷偷", "暗杀", "捉迷藏", "隐身"],
+        "en": ["stealth", "hide", "sneak", "undetected", "invisible", "seek", "spy", "covert"],
+    },
+    "board": {
+        "zh": ["棋", "五子棋", "围棋", "象棋", "井字", "下棋", "落子", "棋盘", "对弈", "黑白", "棋子", "连珠"],
+        "en": ["chess", "gomoku", "go", "checkers", "tic-tac-toe", "board game", "piece", "grid", "five in a row"],
+    },
+    "quiz": {
+        "zh": ["问答", "答题", "知识", "竞猜", "选择题", "判断题", "考试", "测验", "抢答", "提问", "回答", "问", "题"],
+        "en": ["quiz", "trivia", "question", "answer", "test", "exam", "knowledge"],
+    },
+    "build": {
+        "zh": ["建造", "搭建", "建筑", "复制", "还原", "盖房", "建城", "结构"],
+        "en": ["build", "construct", "create", "replicate", "architecture", "build battle"],
+    },
+    "tower_defense": {
+        "zh": ["塔防", "防御塔", "放置塔", "敌人路线", "守塔", "据点"],
+        "en": ["tower defense", "td", "place tower", "defend path", "turret"],
+    },
+}
+
+GAME_TYPE_SUPPORT_LEVEL: Dict[str, Dict[str, Any]] = {
+    "adventure": {"tier": 0, "supported": True, "label": "动作冒险", "label_en": "Action Adventure"},
+    "puzzle": {"tier": 1, "supported": True, "label": "解谜", "label_en": "Puzzle"},
+    "parkour": {"tier": 1, "supported": True, "label": "跑酷", "label_en": "Parkour"},
+    "racing": {"tier": 1, "supported": True, "label": "竞速", "label_en": "Racing"},
+    "survival": {"tier": 1, "supported": True, "label": "生存防御", "label_en": "Survival"},
+    "stealth": {"tier": 1, "supported": True, "label": "潜行隐匿", "label_en": "Stealth"},
+    "board": {"tier": 2, "supported": True, "label": "棋盘对弈", "label_en": "Board Game"},
+    "quiz": {"tier": 2, "supported": True, "label": "问答竞猜", "label_en": "Quiz/Trivia"},
+    "build": {"tier": 2, "supported": True, "label": "建造创意", "label_en": "Build Battle"},
+    "tower_defense": {"tier": 2, "supported": True, "label": "塔防策略", "label_en": "Tower Defense"},
+}
+
+UNSUPPORTED_GAME_KEYWORDS: Dict[str, Dict[str, Any]] = {
+    "card_game": {
+        "zh": ["卡牌", "扑克", "纸牌", "斗地主", "炉石", "卡组"],
+        "en": ["card game", "poker", "card battle", "deck", "hearthstone"],
+        "tip": "卡牌类游戏需要复杂的手牌UI，建议改为问答类或收集类玩法",
+    },
+    "rhythm": {
+        "zh": ["音乐", "节奏", "节拍", "弹奏", "音符"],
+        "en": ["rhythm", "music game", "beat", "note", "dance"],
+        "tip": "音乐节奏类需要精确音频同步，建议用NPC对话+计时器实现简化版",
+    },
+    "sports": {
+        "zh": ["足球", "篮球", "排球", "乒乓", "羽毛球", "高尔夫"],
+        "en": ["soccer", "basketball", "football", "volleyball", "tennis", "golf"],
+        "tip": "MC缺少球类物理，建议改为竞速类或用雪球模拟投掷玩法",
+    },
+    "mmorpg": {
+        "zh": ["网游", "公会", "副本", "装备强化", "角色扮演"],
+        "en": ["mmorpg", "guild", "dungeon", "raid", "gear"],
+        "tip": "MMORPG需要大量持久化系统，建议简化为单关卡冒险+收集",
+    },
+}
+
+
+def classify_game_type(text: str) -> tuple[str, float, list[str]]:
+    """从设计文本自动识别游戏类型。"""
+    text_lower = (text or "").lower()
+    warnings: list[str] = []
+
+    for unsup_type, info in UNSUPPORTED_GAME_KEYWORDS.items():
+        for kw in list(info.get("zh", [])) + list(info.get("en", [])):
+            if kw in text_lower:
+                warnings.append(f"[UNSUPPORTED_GAME_TYPE:{unsup_type}] {info['tip']}")
+                break
+
+    scores: Dict[str, int] = {}
+    for game_type, keywords in GAME_TYPE_KEYWORDS.items():
+        score = 0
+        for kw in keywords.get("zh", []) + keywords.get("en", []):
+            if kw in text_lower:
+                score += 1
+        scores[game_type] = score
+
+    best_type = max(scores, key=scores.get) if scores else "adventure"
+    best_score = scores.get(best_type, 0)
+    if best_score == 0:
+        return "adventure", 0.5, warnings
+
+    total_kw = len(GAME_TYPE_KEYWORDS.get(best_type, {}).get("zh", [])) + len(GAME_TYPE_KEYWORDS.get(best_type, {}).get("en", []))
+    confidence = min(best_score / max(total_kw * 0.3, 1), 1.0)
+    return best_type, confidence, warnings
+
+
+def _get_default_game_type_config(game_type: str) -> Dict[str, Any]:
+    """返回游戏类型的默认配置。"""
+    defaults = {
+        "adventure": {},
+        "puzzle": {"max_attempts": 10, "hint_after_fails": 3},
+        "parkour": {"checkpoints": 5, "time_limit_sec": 300, "allow_fall_reset": True},
+        "racing": {"laps": 3, "checkpoints_per_lap": 5},
+        "survival": {"waves": 5, "mobs_per_wave": 10, "rest_between_waves_sec": 15},
+        "stealth": {"max_detections": 3, "patrol_speed": "slow"},
+        "board": {"board_size": 9, "win_pattern": "five_in_row", "npc_difficulty": "easy"},
+        "quiz": {"questions_count": 10, "time_per_question_sec": 30, "pass_score": 7},
+        "build": {"time_limit_sec": 300, "reference_structure": True},
+        "tower_defense": {"waves": 10, "starting_gold": 100, "tower_types": 3},
+    }
+    return defaults.get(game_type, {})
+
+
+def _extract_first_int(text: str, default: int) -> int:
+    m = re.search(r"(\d+)", text or "")
+    if not m:
+        return default
+    try:
+        return int(m.group(1))
+    except Exception:
+        return default
+
+
+def _merge_state_defaults(spec: Dict[str, Any], variables: Dict[str, str], initial_values: Dict[str, Any]) -> None:
+    state = dict(spec.get("state") or {})
+    vars_old = dict(state.get("variables") or {})
+    init_old = dict(state.get("initial_values") or {})
+    vars_old.update({k: v for k, v in variables.items() if k not in vars_old})
+    init_old.update({k: v for k, v in initial_values.items() if k not in init_old})
+    spec["state"] = {"variables": vars_old, "initial_values": init_old}
+
+
+def _apply_game_type_templates(spec: Dict[str, Any], text: str, game_type: str) -> None:
+    rules = list(spec.get("rules") or [])
+    triggers = list(spec.get("triggers") or [])
+
+    if game_type in ("board", "parkour", "quiz"):
+        generic_conditions = {"player_achieves_goal", "player_fails_condition", "trigger_activated", "condition_met"}
+        rules = [r for r in rules if str(r.get("condition") or "") not in generic_conditions]
+
+    def has_rule_var(name: str) -> bool:
+        return any(name in str(r.get("condition") or "") for r in rules if isinstance(r, dict))
+
+    def has_trigger(ttype: str) -> bool:
+        return any(str(t.get("type") or "").lower() == ttype for t in triggers if isinstance(t, dict))
+
+    if game_type == "board":
+        if not any(r.get("type") == "win" for r in rules if isinstance(r, dict)):
+            rules.append({"type": "win", "condition": "winner == 1", "desc": "先连成五子的一方获胜"})
+        if not has_trigger("piece_place"):
+            triggers.append({"type": "piece_place", "target": "board", "action": "place_piece", "desc": "玩家落子"})
+        if not has_trigger("turn_end"):
+            triggers.append({"type": "turn_end", "target": "board", "action": "switch_turn", "desc": "回合切换"})
+        _merge_state_defaults(
+            spec,
+            {"moves_count": "int", "current_turn": "int", "winner": "int"},
+            {"moves_count": 0, "current_turn": 0, "winner": 0},
+        )
+
+    elif game_type == "parkour":
+        checkpoints = _extract_first_int(text, 10)
+        falls = 3
+        m_falls = re.search(r"掉落\s*(\d+)\s*次", text or "")
+        if m_falls:
+            falls = int(m_falls.group(1))
+        time_limit = 300
+        m_min = re.search(r"(\d+)\s*分钟", text or "")
+        if m_min:
+            time_limit = int(m_min.group(1)) * 60
+        if not has_rule_var("checkpoints_reached"):
+            rules.append({"type": "win", "condition": f"checkpoints_reached >= {checkpoints}", "desc": "到达终点"})
+        if not has_rule_var("falls_count"):
+            rules.append({"type": "lose", "condition": f"falls_count >= {falls}", "desc": f"掉落{falls}次以上"})
+        if not has_rule_var("timer_fired"):
+            rules.append({"type": "lose", "condition": "timer_fired == 1", "desc": "超时"})
+        if not has_trigger("checkpoint_reach"):
+            triggers.append({"type": "checkpoint_reach", "target": "platform", "action": "reach_checkpoint", "desc": "到达检查点"})
+        if not has_trigger("fall_detect"):
+            triggers.append({"type": "fall_detect", "target": "ground", "action": "count_fall", "desc": "坠落计数"})
+        if has_trigger("timer"):
+            for t in triggers:
+                if str(t.get("type") or "").lower() == "timer":
+                    t["target"] = "countdown"
+                    t["action"] = "trigger_lose"
+                    t["quantity"] = time_limit
+                    break
+        else:
+            triggers.append({"type": "timer", "target": "countdown", "action": "trigger_lose", "quantity": time_limit, "desc": "限时挑战"})
+        _merge_state_defaults(
+            spec,
+            {"checkpoints_reached": "int", "falls_count": "int", "course_completed": "int"},
+            {"checkpoints_reached": 0, "falls_count": 0, "course_completed": 0},
+        )
+
+    elif game_type == "quiz":
+        pass_score = 7
+        m_score = re.search(r"答对\s*(\d+)", text or "")
+        if m_score:
+            pass_score = int(m_score.group(1))
+        q_time = 30
+        m_sec = re.search(r"(\d+)\s*秒", text or "")
+        if m_sec:
+            q_time = int(m_sec.group(1))
+        if not has_rule_var("correct_count"):
+            rules.append({"type": "win", "condition": f"correct_count >= {pass_score}", "desc": f"答对{pass_score}个以上"})
+        if not has_trigger("answer_submit"):
+            triggers.append({"type": "answer_submit", "target": "quiz", "action": "check_answer", "desc": "提交答案"})
+        if not has_trigger("npc_talk"):
+            triggers.append({"type": "npc_talk", "target": "examiner", "action": "ask_question", "desc": "NPC提问"})
+        if has_trigger("timer"):
+            for t in triggers:
+                if str(t.get("type") or "").lower() == "timer":
+                    t["target"] = "question_timer"
+                    t["action"] = "next_question"
+                    t["quantity"] = q_time
+                    break
+        else:
+            triggers.append({"type": "timer", "target": "question_timer", "action": "next_question", "quantity": q_time, "desc": "每题限时"})
+        _merge_state_defaults(
+            spec,
+            {"score": "int", "questions_answered": "int", "correct_count": "int"},
+            {"score": 0, "questions_answered": 0, "correct_count": 0},
+        )
+
+    spec["rules"] = rules
+    spec["triggers"] = triggers
 
 
 def _extract_rules_local(text: str) -> List[Dict[str, Any]]:
@@ -500,9 +796,26 @@ def compile_experience_spec(
     else:
         spec = _compile_local(normalized, scene_class)
 
+    game_type, gt_confidence, gt_warnings = classify_game_type(normalized)
+    if gt_warnings:
+        # 命中不支持类型时回退到 adventure，避免误分类到无关类型
+        game_type = "adventure"
+        gt_confidence = 0.5
+
+    spec["game_type"] = game_type
+    spec["game_type_confidence"] = gt_confidence
+    spec["game_type_config"] = _get_default_game_type_config(game_type)
+
+    _apply_game_type_templates(spec, normalized, game_type)
+
     # 条件标准化 + 状态变量补全
     spec = _normalize_all_conditions(spec)
     spec = _ensure_state_variables(spec)
+
+    if gt_warnings:
+        existing_warnings = list(spec.get("_compile_warnings", []))
+        existing_warnings.extend(gt_warnings)
+        spec["_compile_warnings"] = existing_warnings
 
     try:
         from app.core.runtime.rule_document_generator import generate_rule_document
@@ -529,6 +842,8 @@ def experience_spec_summary(spec: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "spec_version": spec.get("spec_version", EXPERIENCE_SPEC_VERSION),
         "scene_class": spec.get("scene_class", "CONTENT"),
+        "game_type": spec.get("game_type", "adventure"),
+        "game_type_confidence": spec.get("game_type_confidence", 0.5),
         "compiler_mode": spec.get("compiler_mode", "unknown"),
         "rule_count": len(rules),
         "trigger_count": len(triggers),

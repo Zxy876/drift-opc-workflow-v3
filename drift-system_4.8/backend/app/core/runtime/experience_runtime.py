@@ -344,6 +344,97 @@ def _apply_trigger_to_state(
     elif ttype == "timer":
         new_state["timer_fired"] = 1
 
+    elif ttype == "guard_detect":
+        new_state["guard_detected"] = 1
+        times = new_state.get("times_detected", 0)
+        new_state["times_detected"] = int(times) + 1 if isinstance(times, (int, float)) else 1
+
+    # Tier 1: 新游戏类型 trigger
+    elif ttype == "block_place":
+        blocks = new_state.get("blocks_placed", 0)
+        new_state["blocks_placed"] = int(blocks) + 1 if isinstance(blocks, (int, float)) else 1
+        placed_type = str(payload.get("block_type", "")).lower()
+        if placed_type:
+            key = f"placed_{placed_type.replace(' ', '_')}"
+            v = new_state.get(key, 0)
+            new_state[key] = int(v) + 1 if isinstance(v, (int, float)) else 1
+
+    elif ttype == "lever_toggle":
+        target_lever = target or "lever"
+        new_state[f"toggled_{target_lever}"] = 1
+        steps = new_state.get("steps_completed", 0)
+        new_state["steps_completed"] = int(steps) + 1 if isinstance(steps, (int, float)) else 1
+
+    elif ttype in ("checkpoint_reach", "course_complete"):
+        cp = new_state.get("checkpoints_reached", 0)
+        new_state["checkpoints_reached"] = int(cp) + 1 if isinstance(cp, (int, float)) else 1
+        cp_name = target or f"checkpoint_{int(cp) + 1}"
+        new_state[f"reached_{cp_name}"] = 1
+        if ttype == "course_complete":
+            new_state["course_completed"] = 1
+
+    elif ttype == "fall_detect":
+        falls = new_state.get("falls_count", 0)
+        new_state["falls_count"] = int(falls) + 1 if isinstance(falls, (int, float)) else 1
+
+    elif ttype in ("wave_start", "wave_spawn"):
+        wave = new_state.get("current_wave", 0)
+        new_state["current_wave"] = int(wave) + 1 if isinstance(wave, (int, float)) else 1
+
+    elif ttype == "wave_clear":
+        waves = new_state.get("waves_survived", 0)
+        new_state["waves_survived"] = int(waves) + 1 if isinstance(waves, (int, float)) else 1
+
+    elif ttype == "mob_kill":
+        kills = new_state.get("mobs_killed", 0)
+        new_state["mobs_killed"] = int(kills) + 1 if isinstance(kills, (int, float)) else 1
+        if target:
+            key = f"killed_{target}"
+            v = new_state.get(key, 0)
+            new_state[key] = int(v) + 1 if isinstance(v, (int, float)) else 1
+
+    elif ttype == "player_damage":
+        hp = new_state.get("player_health", 20)
+        damage = float(payload.get("damage", 1))
+        new_hp = max(0, float(hp) - damage)
+        new_state["player_health"] = new_hp
+        if new_hp <= 0:
+            new_state["player_alive"] = 0
+
+    elif ttype == "detection_alert":
+        new_state["stealth_broken"] = 1
+        detections = new_state.get("times_detected", 0)
+        new_state["times_detected"] = int(detections) + 1 if isinstance(detections, (int, float)) else 1
+
+    # Tier 2: 高级游戏类型 trigger
+    elif ttype == "piece_place":
+        moves = new_state.get("moves_count", 0)
+        new_state["moves_count"] = int(moves) + 1 if isinstance(moves, (int, float)) else 1
+        bx = payload.get("board_x", -1)
+        by = payload.get("board_y", -1)
+        if isinstance(bx, (int, float)) and isinstance(by, (int, float)) and bx >= 0 and by >= 0:
+            new_state[f"board_{int(bx)}_{int(by)}"] = payload.get("piece_color", 1)
+
+    elif ttype == "turn_end":
+        turn = new_state.get("current_turn", 0)
+        new_state["current_turn"] = int(turn) + 1 if isinstance(turn, (int, float)) else 1
+
+    elif ttype == "answer_submit":
+        answered = new_state.get("questions_answered", 0)
+        new_state["questions_answered"] = int(answered) + 1 if isinstance(answered, (int, float)) else 1
+        is_correct = payload.get("correct", False)
+        if is_correct:
+            correct = new_state.get("correct_count", 0)
+            new_state["correct_count"] = int(correct) + 1 if isinstance(correct, (int, float)) else 1
+            score = new_state.get("score", 0)
+            new_state["score"] = int(score) + int(payload.get("points", 10))
+
+    elif ttype == "structure_match":
+        accuracy = float(payload.get("accuracy", 0))
+        new_state["match_score"] = accuracy
+        if accuracy >= float(payload.get("pass_threshold", 80)):
+            new_state["build_complete"] = 1
+
     # 元数据记录
     new_state["_last_trigger_type"] = ttype
     new_state["_last_trigger_at_ms"] = int(time.time() * 1000)

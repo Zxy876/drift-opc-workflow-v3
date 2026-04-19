@@ -26,6 +26,20 @@ from bot_client import BotClient
 from skill_profiles import get_profile, DEFAULT_PROFILES
 
 
+GAME_TYPE_LABELS = {
+    "adventure": "动作冒险",
+    "puzzle": "解谜",
+    "parkour": "跑酷",
+    "racing": "竞速",
+    "survival": "生存防御",
+    "stealth": "潜行隐匿",
+    "board": "棋盘对弈",
+    "quiz": "问答竞猜",
+    "build": "建造创意",
+    "tower_defense": "塔防策略",
+}
+
+
 class StrategyBot:
     """分层决策 Bot — 用技能参数模拟不同水平的玩家"""
 
@@ -554,6 +568,10 @@ class StrategyBot:
                     if objective:
                         self._broadcast("INFO", f"📋 目标: {objective}")
 
+                game_type = data.get("game_type", "adventure")
+                if game_type != "adventure":
+                    self._broadcast("INFO", f"🎮 游戏类型: {GAME_TYPE_LABELS.get(game_type, game_type)}")
+
                 timeline = data.get("timeline", [])
                 for event in timeline:
                     s = event.get("state", {})
@@ -630,8 +648,77 @@ class StrategyBot:
                 return {"type": "avoid", "target": "guard"}
             if "timer" in condition or "time" in condition:
                 return {"type": "time_pressure", "target": "timer"}
+            if "falls_count" in condition:
+                return {"type": "avoid", "target": "falling"}
+            if "player_alive" in condition or "player_health" in condition:
+                return {"type": "survive", "target": "health"}
+            if "times_detected" in condition:
+                return {"type": "avoid", "target": "detection"}
+            if "wrong_count" in condition:
+                return {"type": "answer", "target": "correctly"}
+
+        # 新游戏类型条件模式
+        if rule_type == "win":
+            m = re.match(r"(?:steps_completed|puzzle_solved|sequence_correct)\s*>=\s*(\d+)", condition, re.IGNORECASE)
+            if m:
+                return {"type": "interact_sequence", "target": "puzzle", "count": int(m.group(1))}
+
+            m = re.match(r"(?:checkpoints_reached|course_completed)\s*>=\s*(\d+)", condition, re.IGNORECASE)
+            if m:
+                return {"type": "reach_sequence", "target": "checkpoint", "count": int(m.group(1))}
+
+            m = re.match(r"(?:waves_survived|mobs_killed)\s*>=\s*(\d+)", condition, re.IGNORECASE)
+            if m:
+                return {"type": "survive", "target": "wave", "count": int(m.group(1))}
+
+            m = re.match(r"(?:correct_count|score)\s*>=\s*(\d+)", condition, re.IGNORECASE)
+            if m:
+                return {"type": "answer", "target": "quiz", "count": int(m.group(1))}
+
+            m = re.match(r"(?:match_score|build_complete)\s*>=\s*(\d+)", condition, re.IGNORECASE)
+            if m:
+                return {"type": "build", "target": "structure", "count": int(m.group(1))}
+
+            m = re.match(r"(?:winner|game_won)\s*==\s*1", condition, re.IGNORECASE)
+            if m:
+                return {"type": "strategy", "target": "board", "count": 1}
 
         return None
+
+    def _handle_puzzle(self, state: dict):
+        """解谜行为: 搜索可交互物体（拉杆/按钮），尝试操作"""
+        nearby = state.get("nearby_blocks", [])
+        for block in nearby:
+            block_type = block.get("type", "")
+            if block_type in ("lever", "button", "pressure_plate", "tripwire"):
+                self._broadcast("ACTION", f"🔧 尝试操作: {block_type}")
+                self.client.execute_action({"interact": 1})
+                return
+        self._handle_smart_explore(state)
+
+    def _handle_parkour(self, state: dict):
+        """跑酷行为: 面向前方跳跃，调整视角寻找下一个平台"""
+        self.client.execute_action({
+            "move_forward": 1,
+            "jump": 1,
+            "sprint": 1,
+        })
+
+    def _handle_survival_combat(self, state: dict):
+        """生存战斗: 攻击最近的敌对实体"""
+        entities = state.get("nearby_entities", [])
+        hostiles = [e for e in entities if e.get("type") in ("zombie", "skeleton", "spider", "creeper")]
+        if hostiles:
+            nearest = min(hostiles, key=self._entity_dist)
+            self._broadcast("ACTION", f"⚔ 攻击: {nearest.get('type', '?')}")
+            pos = state.get("position", [0, 0, 0])
+            tx = pos[0] + nearest.get("rel_x", 0)
+            ty = pos[1] + nearest.get("rel_y", 0) + 1.5
+            tz = pos[2] + nearest.get("rel_z", 0)
+            self.client.look_at(tx, ty, tz)
+            self.client.execute_action({"attack": 1, "move_forward": 1})
+        else:
+            self._handle_explore(state)
 
     def _handle_stuck(self, state: dict):
         """处理卡住状态"""

@@ -1445,6 +1445,45 @@ function renderCompileWarnings(warnings) {
   host.appendChild(warningEl)
 }
 
+function gameTypeLabel(gameType) {
+  const labels = {
+    adventure: '🗺 动作冒险',
+    puzzle: '🧩 解谜',
+    parkour: '🏃 跑酷',
+    racing: '🏎 竞速',
+    survival: '⚔ 生存防御',
+    stealth: '🥷 潜行隐匿',
+    board: '♟ 棋盘对弈',
+    quiz: '❓ 问答竞猜',
+    build: '🏗 建造创意',
+    tower_defense: '🏰 塔防策略',
+  }
+  return labels[gameType] || ('🎮 ' + (gameType || 'adventure'))
+}
+
+function renderGameTypeWarnings(warnings) {
+  if (!warnings || !warnings.length) return
+  const host = $('injectResult')
+  if (!host) return
+  const unsupported = warnings.filter(w => String(w || '').startsWith('[UNSUPPORTED_GAME_TYPE'))
+  if (!unsupported.length) return
+
+  let html = ''
+  for (const w of unsupported) {
+    const m = String(w).match(/\[UNSUPPORTED_GAME_TYPE:(\w+)\]\s*(.*)/)
+    if (!m) continue
+    html += `<div style="margin-top:6px;background:#fff3cd;border:1px solid #ffc107;padding:8px;border-radius:4px;">`
+    html += `<div style="font-size:11px;font-weight:700;color:#664d03">⚠ 不支持的游戏类型: ${esc(m[1])}</div>`
+    html += `<div style="font-size:10px;color:#856404;padding-top:2px">${esc(m[2])}</div>`
+    html += `</div>`
+  }
+  if (!html) return
+  const el = document.createElement('div')
+  el.id = 'compileWarnings'
+  el.innerHTML = html
+  host.appendChild(el)
+}
+
 /** Quick Publish: direct Drift inject + push-load (original behavior) */
 async function doPublishQuick(btn, text, levelId, playerId) {
   await withSpin(btn, async () => {
@@ -1454,8 +1493,9 @@ async function doPublishQuick(btn, text, levelId, playerId) {
       text, player_id: playerId,
     })
     const es = ri.experience_spec_summary || {}
+    const gameType = (ri.experience_spec && ri.experience_spec.game_type) || es.game_type || 'adventure'
     const compileWarnings = ri.experience_warnings || []
-    $('injectBadge').textContent = '✓ published'
+    $('injectBadge').textContent = `✓ ${gameTypeLabel(gameType)}`
     let pushOk = false
     let pushMsg = ''
     try {
@@ -1479,6 +1519,7 @@ async function doPublishQuick(btn, text, levelId, playerId) {
     el.className = 'result-block'
     el.innerHTML = html
     renderCompileWarnings(compileWarnings)
+    renderGameTypeWarnings(compileWarnings)
 
     const dot = $('mcFeedbackDot')
     const txt = $('mcFeedbackText')
@@ -1509,6 +1550,7 @@ async function doPublishPremium(btn, text, levelId, playerId) {
       player_id: playerId,
     })
     const es = ri.experience_spec_summary || {}
+    const gameType = (ri.experience_spec && ri.experience_spec.game_type) || es.game_type || 'adventure'
     const compileWarnings = ri.experience_warnings || []
     toast(`关卡 ${levelId} 已编译（${es.rule_count || 0} rules），提交 Premium 增强...`, 'ok')
 
@@ -1547,11 +1589,13 @@ async function doPublishPremium(btn, text, levelId, playerId) {
     el.innerHTML = kv('status', 'Premium workflow submitted', 'blue')
       + kv('workflowId', esc(String(workflowId)), 'cyan')
       + kv('level_id', esc(levelId), 'blue')
+      + kv('game_type', gameTypeLabel(gameType), 'purple')
       + kv('compiled', (es.rule_count || 0) + ' rules / ' + (es.trigger_count || 0) + ' triggers', 'green')
       + kv('mode', 'Beam Search + 叙事弧', 'purple')
       + kv('beam_width', '2 paths', 'green')
       + kv('rounds', '2 rounds', 'green')
     renderCompileWarnings(compileWarnings)
+    renderGameTypeWarnings(compileWarnings)
     toast(`Premium #${workflowId} 已提交（Beam Search + 叙事弧）`, 'ok')
   }).catch(e => { toast('Premium 提交失败: ' + e.message, 'err') })
 }
@@ -1571,6 +1615,7 @@ async function doPublishAsyncAIFlow(btn, text, levelId, playerId, difficulty) {
     // Extract workflowId from response
     const data = r.data || r
     const compileWarnings = data.experience_warnings || r.experience_warnings || []
+    const gameType = data.game_type || 'adventure'
     const workflowId = data.workflowId || data.workflow_id
     if (!workflowId) {
       throw new Error('AsyncAIFlow 未返回 workflowId')
@@ -1589,9 +1634,11 @@ async function doPublishAsyncAIFlow(btn, text, levelId, playerId, difficulty) {
     el.className = 'result-block'
     el.innerHTML = kv('status', 'workflow submitted', 'blue')
       + kv('workflowId', esc(String(workflowId)), 'cyan')
+      + kv('game_type', gameTypeLabel(gameType), 'purple')
       + kv('difficulty', String(difficulty) + '★', 'purple')
       + kv('mode', 'AsyncAIFlow Pipeline D' + difficulty + '★', 'blue')
     renderCompileWarnings(compileWarnings)
+    renderGameTypeWarnings(compileWarnings)
 
     toast(`AsyncAIFlow 工作流 #${workflowId} 已提交！`, 'ok')
   }).catch(e => { toast('AsyncAIFlow 提交失败: ' + e.message, 'err') })
