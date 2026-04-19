@@ -139,6 +139,12 @@ def api_get_level(level_id: str):
 # -----------------------------
 @app.get("/")
 def home():
+    story_state = {}
+    if story_engine is not None:
+        try:
+            story_state = story_engine.get_public_state()
+        except Exception:
+            story_state = {"status": "degraded"}
     return {
         "status": "running",
         "routes": [
@@ -149,7 +155,7 @@ def home():
             "/minimap/*",
             "/minimap/png/*",
         ],
-        "story_state": story_engine.get_public_state(),
+        "story_state": story_state,
     }
 
 
