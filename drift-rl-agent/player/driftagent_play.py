@@ -23,7 +23,7 @@ from strategy_bot import StrategyBot
 def main():
     parser = argparse.ArgumentParser(description="DriftAgent Play Mode")
     parser.add_argument("--level", required=True, help="关卡 ID")
-    parser.add_argument("--player-id", default="DriftAgent", help="玩家 ID")
+    parser.add_argument("--player-id", default="DriftRLAgent", help="玩家 ID")
     parser.add_argument("--skill", default="average", help="技能档位")
     parser.add_argument("--max-steps", type=int, default=3000, help="最大步数")
     parser.add_argument("--bot-host", default="localhost", help="Bot TCP Bridge 地址")

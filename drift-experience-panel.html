@@ -1472,7 +1472,7 @@ async function doPublishQuick(btn, text, levelId, playerId) {
     setWorkflowStep(4)
 
     // ── DriftAgent Play Mode: 自动触发 Agent 玩关卡 ──
-    if ((playerId || '').toLowerCase() === 'driftagent') {
+    if (['driftagent', 'driftrlagent'].includes((playerId || '').toLowerCase())) {
       triggerDriftAgentPlay(levelId, playerId)
     }
 
@@ -1665,7 +1665,7 @@ function startWorkflowPolling(workflowId, playerId, levelId) {
 
         // ── DriftAgent Play Mode: 工作流完成后自动触发 Agent ──
         const _playerId = $('playerId').value.trim()
-        if ((_playerId || '').toLowerCase() === 'driftagent') {
+        if (['driftagent', 'driftrlagent'].includes((_playerId || '').toLowerCase())) {
           triggerDriftAgentPlay(levelId || $('levelId').value.trim(), _playerId)
         }
 

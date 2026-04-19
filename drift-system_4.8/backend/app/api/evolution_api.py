@@ -50,6 +50,7 @@ def _check_bot_bridge(port: int = 9999, timeout: float = 1.0) -> bool:
 
 _MAX_SESSION_AGE = 3600 * 24  # 24 小时后自动清理
 _MAX_SESSIONS = 50            # 最多保留 50 个会话
+_MAX_PLAY_SESSIONS = 30       # 最多保留 30 个 Play 会话
 
 
 def _cleanup_old_sessions() -> None:
@@ -84,6 +85,41 @@ def _cleanup_old_sessions() -> None:
                 except OSError:
                     pass
             del _sessions[sid]
+
+
+def _cleanup_old_play_sessions() -> None:
+    """清理过期 Play 会话，避免 _play_sessions 字典无限增长。"""
+    now = time.time()
+    expired = [
+        sid for sid, s in list(_play_sessions.items())
+        if s["status"] in ("completed", "failed", "error")
+        and now - s.get("started_at", 0) > _MAX_SESSION_AGE
+    ]
+    for sid in expired:
+        for key in ("status_file", "diary_file"):
+            f = _play_sessions[sid].get(key, "")
+            if f and os.path.exists(f):
+                try:
+                    os.remove(f)
+                except OSError:
+                    pass
+        del _play_sessions[sid]
+
+    if len(_play_sessions) > _MAX_PLAY_SESSIONS:
+        finished = sorted(
+            [(sid, s) for sid, s in _play_sessions.items()
+             if s["status"] not in ("starting", "running")],
+            key=lambda x: x[1].get("started_at", 0),
+        )
+        for sid, _ in finished[: len(_play_sessions) - _MAX_PLAY_SESSIONS]:
+            for key in ("status_file", "diary_file"):
+                f = _play_sessions[sid].get(key, "")
+                if f and os.path.exists(f):
+                    try:
+                        os.remove(f)
+                    except OSError:
+                        pass
+            del _play_sessions[sid]
 
 
 class _StartEvolutionRequest(BaseModel):
@@ -347,7 +383,7 @@ async def list_sessions():
 
 class _PlayRequest(BaseModel):
     level_id: str
-    player_id: str = "DriftAgent"
+    player_id: str = "DriftRLAgent"
     skill: str = "average"
     max_steps: int = 3000
     bot_port: int = 9999
@@ -358,13 +394,30 @@ async def start_play(req: _PlayRequest):
     """
     启动 DriftAgent 单局游玩（轻量级，不含进化循环）。
 
-    前端在发布成功后、检测到 player_id == "DriftAgent" 时自动调用。
+    前端在发布成功后、检测到 player_id 为 DriftAgent 或 DriftRLAgent 时自动调用。
     """
+    _cleanup_old_play_sessions()
+
     if not _check_bot_bridge(req.bot_port):
         raise HTTPException(
             status_code=503,
             detail=f"Mineflayer Bot 未运行（端口 {req.bot_port} 不可达）。"
                    "请先在服务器运行: node player/player_bot.js"
+        )
+
+    # 互斥检查：同一时间只允许一个 Play 会话
+    running = [
+        s for s in _play_sessions.values()
+        if s["status"] in ("starting", "running")
+        and s.get("process") and s["process"].poll() is None
+    ]
+    if running:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": f"已有 Play 会话正在运行 (#{running[0]['session_id']})。请等待完成后再启动。",
+                "running_session": running[0]["session_id"]
+            }
         )
 
     session_id = str(uuid.uuid4())[:8]
@@ -483,6 +536,29 @@ async def get_play_diary(session_id: str):
         with open(df, "r", encoding="utf-8") as f:
             return json.load(f)
     return {"decisions": [], "result": None}
+
+
+@router.post("/play/stop/{session_id}")
+async def stop_play(session_id: str):
+    """停止正在运行的 Play 会话"""
+    if session_id not in _play_sessions:
+        raise HTTPException(status_code=404, detail="play session not found")
+
+    session = _play_sessions[session_id]
+    proc = session.get("process")
+    if proc and proc.poll() is None:
+        try:
+            proc.send_signal(signal.SIGINT)
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+        except Exception:
+            proc.kill()
+        session["status"] = "stopped"
+        return {"status": "stopped"}
+
+    return {"status": session["status"], "msg": "process already finished"}
 
 
 import atexit as _atexit
