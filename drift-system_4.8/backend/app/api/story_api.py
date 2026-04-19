@@ -3316,6 +3316,127 @@ def _bridge_exp_spec_to_world_patch(
                 })
                 _guard_spawn_offsets_used.append((dx, dz))
 
+        elif ttype == "block_place":
+            trigger_zones.append({
+                "id": tid,
+                "quest_event": f"exp_block_place_{target}" if target else f"exp_block_place_{level_id}",
+                "radius": -1.0,
+                "repeat": True,
+                "_exp_type": "block_place",
+                "_exp_desc": str(trigger.get("desc", "")),
+            })
+
+        elif ttype == "lever_toggle":
+            trigger_zones.append({
+                "id": tid,
+                "quest_event": f"exp_lever_toggle_{target}" if target else f"exp_lever_toggle_{level_id}",
+                "radius": -1.0,
+                "repeat": True,
+                "_exp_type": "lever_toggle",
+                "_exp_desc": str(trigger.get("desc", "")),
+            })
+
+        elif ttype in ("checkpoint_reach", "course_complete"):
+            trigger_zones.append({
+                "id": tid,
+                "quest_event": f"exp_{ttype}_{target}" if target else f"exp_{ttype}_{level_id}",
+                "radius": float(trigger.get("radius", 3.0)),
+                "repeat": ttype == "checkpoint_reach",
+                "_exp_type": ttype,
+                "_exp_desc": str(trigger.get("desc", "")),
+            })
+
+        elif ttype == "fall_detect":
+            trigger_zones.append({
+                "id": tid,
+                "quest_event": f"exp_fall_detect_{level_id}",
+                "radius": -1.0,
+                "repeat": True,
+                "_exp_type": "fall_detect",
+                "_exp_desc": str(trigger.get("desc", "")),
+            })
+
+        elif ttype in ("wave_start", "wave_spawn", "wave_clear"):
+            qe_type = "wave_start" if ttype == "wave_spawn" else ttype
+            trigger_zones.append({
+                "id": tid,
+                "quest_event": f"exp_{qe_type}_{target}" if target else f"exp_{qe_type}_{level_id}",
+                "radius": -1.0,
+                "repeat": True,
+                "_exp_type": ttype,
+                "_exp_desc": str(trigger.get("desc", "")),
+            })
+
+        elif ttype == "mob_kill":
+            trigger_zones.append({
+                "id": tid,
+                "quest_event": f"exp_mob_kill_{target}" if target else f"exp_mob_kill_{level_id}",
+                "radius": -1.0,
+                "repeat": True,
+                "_exp_type": "mob_kill",
+                "_exp_desc": str(trigger.get("desc", "")),
+            })
+
+        elif ttype == "player_damage":
+            trigger_zones.append({
+                "id": tid,
+                "quest_event": f"exp_player_damage_{level_id}",
+                "radius": -1.0,
+                "repeat": True,
+                "_exp_type": "player_damage",
+                "_exp_desc": str(trigger.get("desc", "")),
+            })
+
+        elif ttype == "detection_alert":
+            trigger_zones.append({
+                "id": tid,
+                "quest_event": f"exp_detection_alert_{level_id}",
+                "radius": -1.0,
+                "repeat": True,
+                "_exp_type": "detection_alert",
+                "_exp_desc": str(trigger.get("desc", "")),
+            })
+
+        elif ttype == "piece_place":
+            trigger_zones.append({
+                "id": tid,
+                "quest_event": f"exp_piece_place_{target}" if target else f"exp_piece_place_{level_id}",
+                "radius": -1.0,
+                "repeat": True,
+                "_exp_type": "piece_place",
+                "_exp_desc": str(trigger.get("desc", "")),
+            })
+
+        elif ttype == "turn_end":
+            trigger_zones.append({
+                "id": tid,
+                "quest_event": f"exp_turn_end_{target}" if target else f"exp_turn_end_{level_id}",
+                "radius": -1.0,
+                "repeat": True,
+                "_exp_type": "turn_end",
+                "_exp_desc": str(trigger.get("desc", "")),
+            })
+
+        elif ttype == "answer_submit":
+            trigger_zones.append({
+                "id": tid,
+                "quest_event": f"exp_answer_submit_{target}" if target else f"exp_answer_submit_{level_id}",
+                "radius": -1.0,
+                "repeat": True,
+                "_exp_type": "answer_submit",
+                "_exp_desc": str(trigger.get("desc", "")),
+            })
+
+        elif ttype == "structure_match":
+            trigger_zones.append({
+                "id": tid,
+                "quest_event": f"exp_structure_match_{target}" if target else f"exp_structure_match_{level_id}",
+                "radius": -1.0,
+                "repeat": True,
+                "_exp_type": "structure_match",
+                "_exp_desc": str(trigger.get("desc", "")),
+            })
+
     # ── 2. rules → rule_refs ─────────────────────────────────────────────────
     for rule in (exp_spec.get("rules") or []):
         if not isinstance(rule, dict):

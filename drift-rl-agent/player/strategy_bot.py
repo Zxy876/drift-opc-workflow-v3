@@ -80,6 +80,7 @@ class StrategyBot:
         self.level_goals: list[dict] = []
         self.goal_positions: list[tuple[float, float, float]] = []
         self.current_goal_idx: int = 0
+        self._current_game_type: str = "adventure"
         self._drift_url: str = os.environ.get("DRIFT_URL", "http://localhost:8000")
         self.broadcast_enabled = broadcast
 
@@ -112,6 +113,7 @@ class StrategyBot:
         self.level_goals = []
         self.goal_positions = []
         self.current_goal_idx = 0
+        self._current_game_type = "adventure"
 
         # BUG-C: 预检—先确认 Bot 已连接（最多 30 秒）
         for i in range(30):
@@ -264,6 +266,7 @@ class StrategyBot:
 
         health = state.get("health", 20)
         entities = state.get("nearby_entities", [])
+        game_type = getattr(self, "_current_game_type", "adventure")
         pos = state.get("position", [0, 0, 0])
         # BUG-B: 清洗无效坐标（None/NaN 用 0 代替）
         pos = [p if isinstance(p, (int, float)) else 0 for p in pos]
@@ -281,11 +284,22 @@ class StrategyBot:
             and self._entity_dist(e) < self.profile["combat_engage_dist"]
         ]
         if hostiles:
-            target = hostiles[0]
-            dist = self._entity_dist(target)
-            self._broadcast("ACTION", f"⚔ 战斗: 攻击 {target.get('name', '敌对实体')} (距离 {dist:.1f}m)")
-            self.reaction_cooldown = self.profile["reaction_ticks"]
-            self._handle_combat(target, pos)
+            if game_type in ("survival", "tower_defense"):
+                self._handle_survival_combat(state)
+            else:
+                target = hostiles[0]
+                dist = self._entity_dist(target)
+                self._broadcast("ACTION", f"⚔ 战斗: 攻击 {target.get('name', '敌对实体')} (距离 {dist:.1f}m)")
+                self.reaction_cooldown = self.profile["reaction_ticks"]
+                self._handle_combat(target, pos)
+            return
+
+        # GAME-TYPE SPECIFIC
+        if game_type == "puzzle" and random.random() < 0.3:
+            self._handle_puzzle(state)
+            return
+        elif game_type == "parkour":
+            self._handle_parkour(state)
             return
 
         # ── 3. GOAL-DIRECTED: 根据关卡目标行动 ──
@@ -569,6 +583,7 @@ class StrategyBot:
                         self._broadcast("INFO", f"📋 目标: {objective}")
 
                 game_type = data.get("game_type", "adventure")
+                self._current_game_type = game_type
                 if game_type != "adventure":
                     self._broadcast("INFO", f"🎮 游戏类型: {GAME_TYPE_LABELS.get(game_type, game_type)}")
 

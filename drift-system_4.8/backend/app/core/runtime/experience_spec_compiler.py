@@ -797,8 +797,8 @@ def compile_experience_spec(
         spec = _compile_local(normalized, scene_class)
 
     game_type, gt_confidence, gt_warnings = classify_game_type(normalized)
-    if gt_warnings:
-        # 命中不支持类型时回退到 adventure，避免误分类到无关类型
+    support_info = GAME_TYPE_SUPPORT_LEVEL.get(game_type, {})
+    if not support_info.get("supported", False):
         game_type = "adventure"
         gt_confidence = 0.5
 
@@ -897,5 +897,34 @@ def validate_spec_completeness(spec: dict) -> list[str]:
     )
     if has_collect_trigger and not has_collect_condition:
         warnings.append("⚠ 有 item_collect 触发器但没有收集计数条件。触发事件不会推进规则。")
+
+    has_checkpoint_trigger = any(t.get("type") in ("checkpoint_reach", "course_complete") for t in triggers)
+    has_checkpoint_condition = any(
+        "checkpoints_reached" in str(r.get("condition", "")) or "course_completed" in str(r.get("condition", ""))
+        for r in rules
+    )
+    if has_checkpoint_trigger and not has_checkpoint_condition:
+        warnings.append("⚠ 有 checkpoint_reach/course_complete 触发器但没有检查点进度条件（如 checkpoints_reached >= N）。")
+
+    has_answer_trigger = any(t.get("type") == "answer_submit" for t in triggers)
+    has_answer_condition = any(
+        "correct_count" in str(r.get("condition", "")) or "score" in str(r.get("condition", ""))
+        for r in rules
+    )
+    if has_answer_trigger and not has_answer_condition:
+        warnings.append("⚠ 有 answer_submit 触发器但没有答题得分条件（如 correct_count >= N）。")
+
+    has_fall_trigger = any(t.get("type") == "fall_detect" for t in triggers)
+    has_fall_condition = any("falls_count" in str(r.get("condition", "")) for r in rules)
+    if has_fall_trigger and not has_fall_condition:
+        warnings.append("⚠ 有 fall_detect 触发器但没有跌落相关条件（如 falls_count >= N）。")
+
+    has_piece_trigger = any(t.get("type") == "piece_place" for t in triggers)
+    has_piece_condition = any(
+        "moves_count" in str(r.get("condition", "")) or "winner" in str(r.get("condition", ""))
+        for r in rules
+    )
+    if has_piece_trigger and not has_piece_condition:
+        warnings.append("⚠ 有 piece_place 触发器但没有棋盘进度条件（如 moves_count 或 winner）。")
 
     return warnings

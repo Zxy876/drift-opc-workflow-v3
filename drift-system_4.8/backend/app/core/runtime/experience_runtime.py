@@ -179,10 +179,38 @@ def _derive_trigger_quest_event(trigger: Dict[str, Any], level_id: str) -> Optio
     elif ttype == "interact":
         return f"exp_interact_{target}" if target else f"exp_interact_{level_id}"
     elif ttype == "timer":
-        duration = int(trigger.get("duration", 60))
+        duration = int(trigger.get("duration", trigger.get("quantity", 60)))
         return f"exp_timer_{duration}s"
     elif ttype == "npc_talk":
         return f"exp_npc_talk_{target}" if target else f"exp_npc_talk_{level_id}"
+    elif ttype == "guard_detect":
+        return f"exp_guard_detect_{target}" if target else f"exp_guard_detect_{level_id}"
+    elif ttype == "block_place":
+        return f"exp_block_place_{target}" if target else f"exp_block_place_{level_id}"
+    elif ttype == "lever_toggle":
+        return f"exp_lever_toggle_{target}" if target else f"exp_lever_toggle_{level_id}"
+    elif ttype == "checkpoint_reach":
+        return f"exp_checkpoint_reach_{target}" if target else f"exp_checkpoint_reach_{level_id}"
+    elif ttype == "fall_detect":
+        return f"exp_fall_detect_{level_id}"
+    elif ttype == "wave_start":
+        return f"exp_wave_start_{target}" if target else f"exp_wave_start_{level_id}"
+    elif ttype == "wave_clear":
+        return f"exp_wave_clear_{target}" if target else f"exp_wave_clear_{level_id}"
+    elif ttype == "mob_kill":
+        return f"exp_mob_kill_{target}" if target else f"exp_mob_kill_{level_id}"
+    elif ttype == "player_damage":
+        return f"exp_player_damage_{level_id}"
+    elif ttype == "detection_alert":
+        return f"exp_detection_alert_{level_id}"
+    elif ttype == "piece_place":
+        return f"exp_piece_place_{target}" if target else f"exp_piece_place_{level_id}"
+    elif ttype == "turn_end":
+        return f"exp_turn_end_{target}" if target else f"exp_turn_end_{level_id}"
+    elif ttype == "answer_submit":
+        return f"exp_answer_submit_{target}" if target else f"exp_answer_submit_{level_id}"
+    elif ttype == "structure_match":
+        return f"exp_structure_match_{target}" if target else f"exp_structure_match_{level_id}"
     return None
 
 
@@ -222,6 +250,62 @@ def _infer_trigger_from_quest_event(quest_event: str) -> Optional[Dict[str, Any]
         except (AttributeError, ValueError):
             duration = 60
         return {"type": "timer", "target": "countdown", "duration": duration, "_inferred": True}
+
+    if qe.startswith("exp_guard_detect_") or qe.startswith("guard_detect_"):
+        target = qe.split("_", 3)[-1] if "_" in qe else "guard"
+        return {"type": "guard_detect", "target": target, "_inferred": True}
+
+    if qe.startswith("exp_block_place_") or qe.startswith("block_place_"):
+        target = qe.split("_", 3)[-1] if "_" in qe else "block"
+        return {"type": "block_place", "target": target, "_inferred": True}
+
+    if qe.startswith("exp_lever_toggle_") or qe.startswith("lever_toggle_"):
+        target = qe.split("_", 3)[-1] if "_" in qe else "lever"
+        return {"type": "lever_toggle", "target": target, "_inferred": True}
+
+    if qe.startswith("exp_checkpoint_reach_") or qe.startswith("checkpoint_reach_"):
+        target = qe.split("_", 3)[-1] if "_" in qe else "checkpoint"
+        return {"type": "checkpoint_reach", "target": target, "_inferred": True}
+
+    if qe.startswith("exp_fall_detect_") or qe.startswith("fall_detect_"):
+        target = qe.split("_", 3)[-1] if "_" in qe else "ground"
+        return {"type": "fall_detect", "target": target, "_inferred": True}
+
+    if qe.startswith("exp_wave_start_") or qe.startswith("wave_start_"):
+        target = qe.split("_", 3)[-1] if "_" in qe else "wave"
+        return {"type": "wave_start", "target": target, "_inferred": True}
+
+    if qe.startswith("exp_wave_clear_") or qe.startswith("wave_clear_"):
+        target = qe.split("_", 3)[-1] if "_" in qe else "wave"
+        return {"type": "wave_clear", "target": target, "_inferred": True}
+
+    if qe.startswith("exp_mob_kill_") or qe.startswith("mob_kill_"):
+        target = qe.split("_", 3)[-1] if "_" in qe else "mob"
+        return {"type": "mob_kill", "target": target, "_inferred": True}
+
+    if qe.startswith("exp_player_damage_") or qe.startswith("player_damage_"):
+        target = qe.split("_", 3)[-1] if "_" in qe else "player"
+        return {"type": "player_damage", "target": target, "_inferred": True}
+
+    if qe.startswith("exp_detection_alert_") or qe.startswith("detection_alert_"):
+        target = qe.split("_", 3)[-1] if "_" in qe else "alert"
+        return {"type": "detection_alert", "target": target, "_inferred": True}
+
+    if qe.startswith("exp_piece_place_") or qe.startswith("piece_place_"):
+        target = qe.split("_", 3)[-1] if "_" in qe else "board"
+        return {"type": "piece_place", "target": target, "_inferred": True}
+
+    if qe.startswith("exp_turn_end_") or qe.startswith("turn_end_"):
+        target = qe.split("_", 3)[-1] if "_" in qe else "board"
+        return {"type": "turn_end", "target": target, "_inferred": True}
+
+    if qe.startswith("exp_answer_submit_") or qe.startswith("answer_submit_"):
+        target = qe.split("_", 3)[-1] if "_" in qe else "quiz"
+        return {"type": "answer_submit", "target": target, "_inferred": True}
+
+    if qe.startswith("exp_structure_match_") or qe.startswith("structure_match_"):
+        target = qe.split("_", 3)[-1] if "_" in qe else "structure"
+        return {"type": "structure_match", "target": target, "_inferred": True}
 
     # Keyword-based fallback for non-standard names
     COLLECT_KWS = ("collect", "gem", "pick", "gather", "item", "宝石", "收集", "捡")
