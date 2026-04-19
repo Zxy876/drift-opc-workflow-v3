@@ -370,6 +370,8 @@ def _apply_game_type_templates(spec: Dict[str, Any], text: str, game_type: str) 
     if game_type == "board":
         if not any(r.get("type") == "win" for r in rules if isinstance(r, dict)):
             rules.append({"type": "win", "condition": "winner == 1", "desc": "先连成五子的一方获胜"})
+        if not has_rule_var("moves_count"):
+            rules.append({"type": "win", "condition": "moves_count >= 25", "desc": "25步内完成对弈（备用条件）"})
         if not has_trigger("piece_place"):
             triggers.append({"type": "piece_place", "target": "board", "action": "place_piece", "desc": "玩家落子"})
         if not has_trigger("turn_end"):
@@ -443,6 +445,107 @@ def _apply_game_type_templates(spec: Dict[str, Any], text: str, game_type: str) 
             spec,
             {"score": "int", "questions_answered": "int", "correct_count": "int"},
             {"score": 0, "questions_answered": 0, "correct_count": 0},
+        )
+
+    elif game_type == "puzzle":
+        keys_needed = _extract_first_int(text, 3)
+        if not has_rule_var("steps_completed"):
+            rules.append({"type": "win", "condition": f"steps_completed >= {keys_needed}", "desc": f"完成{keys_needed}个解谜步骤"})
+        if not has_trigger("lever_toggle"):
+            triggers.append({"type": "lever_toggle", "target": "puzzle_mechanism", "action": "toggle", "desc": "拉杆/机关操作"})
+        if not has_trigger("item_collect"):
+            triggers.append({"type": "item_collect", "target": "key", "action": "collect", "desc": "收集钥匙/道具"})
+        _merge_state_defaults(
+            spec,
+            {"steps_completed": "int", "keys_found": "int"},
+            {"steps_completed": 0, "keys_found": 0},
+        )
+
+    elif game_type == "survival":
+        total_waves = _extract_first_int(text, 5)
+        if not has_rule_var("waves_survived"):
+            rules.append({"type": "win", "condition": f"waves_survived >= {total_waves}", "desc": f"存活{total_waves}波"})
+        if not has_rule_var("player_health"):
+            rules.append({"type": "lose", "condition": "player_health <= 0", "desc": "生命值归零"})
+        if not has_trigger("wave_start"):
+            triggers.append({"type": "wave_start", "target": "arena", "action": "spawn_wave", "desc": "波次开始"})
+        if not has_trigger("wave_clear"):
+            triggers.append({"type": "wave_clear", "target": "arena", "action": "clear_wave", "desc": "波次清除"})
+        if not has_trigger("mob_kill"):
+            triggers.append({"type": "mob_kill", "target": "hostile", "action": "kill_mob", "desc": "击杀怪物"})
+        if not has_trigger("player_damage"):
+            triggers.append({"type": "player_damage", "target": "player", "action": "take_damage", "desc": "受到伤害"})
+        _merge_state_defaults(
+            spec,
+            {"waves_survived": "int", "current_wave": "int", "mobs_killed": "int", "player_health": "int", "player_alive": "int"},
+            {"waves_survived": 0, "current_wave": 0, "mobs_killed": 0, "player_health": 20, "player_alive": 1},
+        )
+
+    elif game_type == "stealth":
+        checkpoints = _extract_first_int(text, 3)
+        if not has_rule_var("checkpoints_reached"):
+            rules.append({"type": "win", "condition": f"checkpoints_reached >= {checkpoints}", "desc": f"到达{checkpoints}个检查点"})
+        if not has_rule_var("stealth_broken"):
+            rules.append({"type": "lose", "condition": "stealth_broken == 1", "desc": "被发现"})
+        if not has_trigger("checkpoint_reach"):
+            triggers.append({"type": "checkpoint_reach", "target": "stealth_point", "action": "reach_checkpoint", "desc": "到达检查点"})
+        if not has_trigger("detection_alert"):
+            triggers.append({"type": "detection_alert", "target": "guard", "action": "detect_player", "desc": "被守卫发现"})
+        _merge_state_defaults(
+            spec,
+            {"checkpoints_reached": "int", "stealth_broken": "int", "times_detected": "int"},
+            {"checkpoints_reached": 0, "stealth_broken": 0, "times_detected": 0},
+        )
+
+    elif game_type == "racing":
+        laps = _extract_first_int(text, 3)
+        time_limit = 300
+        m_min = re.search(r"(\d+)\s*分钟", text or "")
+        if m_min:
+            time_limit = int(m_min.group(1)) * 60
+        if not has_rule_var("checkpoints_reached"):
+            rules.append({"type": "win", "condition": f"checkpoints_reached >= {laps}", "desc": f"完成{laps}圈"})
+        if not has_rule_var("timer_fired"):
+            rules.append({"type": "lose", "condition": "timer_fired == 1", "desc": "超时"})
+        if not has_trigger("checkpoint_reach"):
+            triggers.append({"type": "checkpoint_reach", "target": "lap_marker", "action": "complete_lap", "desc": "完成一圈"})
+        if not has_trigger("timer"):
+            triggers.append({"type": "timer", "target": "race_countdown", "action": "trigger_lose", "quantity": time_limit, "desc": "限时"})
+        _merge_state_defaults(
+            spec,
+            {"checkpoints_reached": "int", "timer_fired": "int"},
+            {"checkpoints_reached": 0, "timer_fired": 0},
+        )
+
+    elif game_type == "tower_defense":
+        total_waves = _extract_first_int(text, 5)
+        if not has_rule_var("waves_survived"):
+            rules.append({"type": "win", "condition": f"waves_survived >= {total_waves}", "desc": f"防御{total_waves}波敌人"})
+        if not has_rule_var("base_health"):
+            rules.append({"type": "lose", "condition": "base_health <= 0", "desc": "据点被摧毁"})
+        if not has_trigger("wave_start"):
+            triggers.append({"type": "wave_start", "target": "spawn_point", "action": "spawn_wave", "desc": "敌人波次开始"})
+        if not has_trigger("wave_clear"):
+            triggers.append({"type": "wave_clear", "target": "spawn_point", "action": "clear_wave", "desc": "波次清除"})
+        if not has_trigger("block_place"):
+            triggers.append({"type": "block_place", "target": "defense_tower", "action": "place_tower", "desc": "放置防御塔"})
+        _merge_state_defaults(
+            spec,
+            {"waves_survived": "int", "current_wave": "int", "towers_placed": "int", "base_health": "int"},
+            {"waves_survived": 0, "current_wave": 0, "towers_placed": 0, "base_health": 100},
+        )
+
+    elif game_type == "build":
+        if not has_rule_var("build_complete"):
+            rules.append({"type": "win", "condition": "build_complete == 1", "desc": "建造完成"})
+        if not has_trigger("block_place"):
+            triggers.append({"type": "block_place", "target": "structure", "action": "place_block", "desc": "放置方块"})
+        if not has_trigger("structure_match"):
+            triggers.append({"type": "structure_match", "target": "blueprint", "action": "check_match", "desc": "结构匹配检测"})
+        _merge_state_defaults(
+            spec,
+            {"blocks_placed": "int", "build_complete": "int", "match_score": "float"},
+            {"blocks_placed": 0, "build_complete": 0, "match_score": 0.0},
         )
 
     spec["rules"] = rules
