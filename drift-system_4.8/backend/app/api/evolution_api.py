@@ -20,6 +20,7 @@ router = APIRouter(prefix="/evolution", tags=["evolution"])
 
 # 全局进化会话存储（内存，单实例够用）
 _sessions: Dict[str, dict] = {}
+_play_sessions: Dict[str, dict] = {}
 
 # drift-rl-agent 相对路径（从本文件向上 5 层到仓库根，再进 drift-rl-agent）
 _RL_AGENT_DIR = os.path.abspath(
@@ -342,6 +343,148 @@ async def list_sessions():
     }
 
 
+# ── DriftAgent Play Mode ──────────────────────────────────────
+
+class _PlayRequest(BaseModel):
+    level_id: str
+    player_id: str = "DriftAgent"
+    skill: str = "average"
+    max_steps: int = 3000
+    bot_port: int = 9999
+
+
+@router.post("/play")
+async def start_play(req: _PlayRequest):
+    """
+    启动 DriftAgent 单局游玩（轻量级，不含进化循环）。
+
+    前端在发布成功后、检测到 player_id == "DriftAgent" 时自动调用。
+    """
+    if not _check_bot_bridge(req.bot_port):
+        raise HTTPException(
+            status_code=503,
+            detail=f"Mineflayer Bot 未运行（端口 {req.bot_port} 不可达）。"
+                   "请先在服务器运行: node player/player_bot.js"
+        )
+
+    session_id = str(uuid.uuid4())[:8]
+    status_file = f"/tmp/driftagent_play_{session_id}_status.json"
+    diary_file = f"/tmp/driftagent_diary_{session_id}.json"
+
+    cmd = [
+        _VENV_PYTHON, "player/driftagent_play.py",
+        "--level", req.level_id,
+        "--player-id", req.player_id,
+        "--skill", req.skill,
+        "--max-steps", str(req.max_steps),
+        "--bot-port", str(req.bot_port),
+        "--status-file", status_file,
+        "--diary-file", diary_file,
+    ]
+
+    _play_sessions[session_id] = {
+        "session_id": session_id,
+        "status": "starting",
+        "status_file": status_file,
+        "diary_file": diary_file,
+        "process": None,
+        "started_at": time.time(),
+        "params": {
+            "level_id": req.level_id,
+            "player_id": req.player_id,
+            "skill": req.skill,
+        },
+    }
+
+    with open(status_file, "w", encoding="utf-8") as f:
+        json.dump({"status": "starting"}, f)
+
+    def _run_play():
+        try:
+            env = os.environ.copy()
+            proc = subprocess.Popen(
+                cmd,
+                cwd=_RL_AGENT_DIR,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                env=env,
+            )
+            _play_sessions[session_id]["process"] = proc
+            _play_sessions[session_id]["status"] = "running"
+            _play_sessions[session_id]["pid"] = proc.pid
+
+            output_lines = []
+            for line in proc.stdout:
+                stripped = line.rstrip()
+                output_lines.append(stripped)
+                if len(output_lines) > 100:
+                    output_lines.pop(0)
+
+            proc.wait()
+            rc = proc.returncode
+            _play_sessions[session_id]["status"] = "completed" if rc == 0 else "failed"
+            _play_sessions[session_id]["exit_code"] = rc
+            _play_sessions[session_id]["output_tail"] = output_lines[-30:]
+        except Exception as exc:
+            _play_sessions[session_id]["status"] = "error"
+            _play_sessions[session_id]["error"] = str(exc)
+
+    threading.Thread(target=_run_play, daemon=True).start()
+    return {"session_id": session_id, "status": "started"}
+
+
+@router.get("/play/status/{session_id}")
+async def get_play_status(session_id: str):
+    """获取 Play Mode 进度（面板轮询）"""
+    if session_id not in _play_sessions:
+        raise HTTPException(status_code=404, detail="play session not found")
+
+    session = _play_sessions[session_id]
+    result = {
+        "session_id": session_id,
+        "status": session["status"],
+        "elapsed": time.time() - session["started_at"],
+        "params": session.get("params", {}),
+    }
+
+    sf = session.get("status_file", "")
+    if sf and os.path.exists(sf):
+        try:
+            with open(sf, "r", encoding="utf-8") as f:
+                result.update(json.load(f))
+        except Exception:
+            pass
+
+    df = session.get("diary_file", "")
+    if df and os.path.exists(df):
+        try:
+            with open(df, "r", encoding="utf-8") as f:
+                diary = json.load(f)
+            result["diary"] = diary
+        except Exception:
+            pass
+
+    if session["status"] in ("completed", "failed", "error"):
+        result["output_tail"] = session.get("output_tail", [])
+        result["exit_code"] = session.get("exit_code")
+
+    return result
+
+
+@router.get("/play/diary/{session_id}")
+async def get_play_diary(session_id: str):
+    """获取决策日记全文"""
+    if session_id not in _play_sessions:
+        raise HTTPException(status_code=404, detail="play session not found")
+
+    df = _play_sessions[session_id].get("diary_file", "")
+    if df and os.path.exists(df):
+        with open(df, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {"decisions": [], "result": None}
+
+
 import atexit as _atexit
 
 def _cleanup_evolution_processes():
@@ -362,6 +505,32 @@ def _cleanup_evolution_processes():
         if sf and os.path.exists(sf):
             try:
                 os.remove(sf)
+            except OSError:
+                pass
+
+    for session in _play_sessions.values():
+        proc = session.get("process")
+        if proc and proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=5)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+
+        sf = session.get("status_file", "")
+        if sf and os.path.exists(sf):
+            try:
+                os.remove(sf)
+            except OSError:
+                pass
+
+        df = session.get("diary_file", "")
+        if df and os.path.exists(df):
+            try:
+                os.remove(df)
             except OSError:
                 pass
 

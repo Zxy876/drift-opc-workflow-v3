@@ -730,6 +730,8 @@ let _pollTimer = null
 let _publishMode = 'quick'   // quick | standard | premium
 let _wfPollTimer = null      // AsyncAIFlow workflow polling timer
 let _activeWorkflowId = null // current workflow being monitored
+let _playPollTimer = null
+let _activePlaySessionId = null
 
 /* ─── HTTP helpers ─────────────────────────────────────────────── */
 async function api(method, path, body) {
@@ -1310,6 +1312,124 @@ async function doPublish() {
   await doPublishQuick(btn, text, levelId, playerId)
 }
 
+/* ─── DriftAgent Play Mode ────────────────────────────────────── */
+async function triggerDriftAgentPlay(levelId, playerId) {
+  try {
+    const r = await POST('/evolution/play', {
+      level_id: levelId,
+      player_id: playerId,
+      skill: 'average',
+      max_steps: 3000,
+    })
+    _activePlaySessionId = r.session_id
+    toast(`🤖 DriftAgent Play 已启动 #${r.session_id}`, 'ok')
+
+    // 开始轮询 play 状态
+    startPlayPolling(r.session_id)
+
+    // 更新 Runtime 面板
+    const dot = $('mcFeedbackDot')
+    const txt = $('mcFeedbackText')
+    if (dot) dot.className = 'mc-dot live'
+    if (txt) txt.textContent = `🤖 DriftAgent 正在玩 ${levelId}...`
+  } catch (e) {
+    toast('DriftAgent Play 启动失败: ' + e.message, 'err')
+    console.error('DriftAgent Play error:', e)
+  }
+}
+
+function startPlayPolling(sessionId) {
+  if (_playPollTimer) clearInterval(_playPollTimer)
+  let pollCount = 0
+
+  _playPollTimer = setInterval(async () => {
+    pollCount++
+    if (pollCount > 600) {  // 最多轮询 30 分钟
+      clearInterval(_playPollTimer)
+      _playPollTimer = null
+      return
+    }
+
+    try {
+      const r = await GET('/evolution/play/status/' + sessionId)
+      const status = (r.status || '').toLowerCase()
+
+      // 更新 Runtime 面板
+      const txt = $('mcFeedbackText')
+      if (status === 'running') {
+        const step = r.step || 0
+        const decisions = r.diary_entry_count || 0
+        if (txt) txt.textContent = `🤖 DriftAgent 进行中 — 步数 ${step} | 决策 ${decisions} 条`
+      } else if (status === 'completed') {
+        clearInterval(_playPollTimer)
+        _playPollTimer = null
+
+        const result = r.result || (r.diary && r.diary.result) || {}
+        const completed = result.completed ? '通关' : '未通关'
+        const deaths = result.deaths || 0
+        const exploration = result.exploration || 0
+
+        if (txt) txt.textContent = `🤖 DriftAgent ${completed} | 死亡 ${deaths} | 探索 ${exploration}`
+        const dot = $('mcFeedbackDot')
+        if (dot) dot.className = result.completed ? 'mc-dot live' : 'mc-dot'
+
+        toast(`🤖 DriftAgent 完成: ${completed}`, 'ok')
+
+        // 渲染决策日记到 Debug 面板
+        if (r.diary) renderDiary(r.diary)
+      } else if (status === 'failed' || status === 'error') {
+        clearInterval(_playPollTimer)
+        _playPollTimer = null
+        if (txt) txt.textContent = `🤖 DriftAgent 出错: ${r.error || 'unknown'}`
+        toast('DriftAgent Play 失败', 'err')
+      }
+    } catch (e) {
+      // 网络错误，静默重试
+    }
+  }, 3000)
+}
+
+function renderDiary(diary) {
+  const el = $('debugResult')
+  if (!el) return
+
+  const decisions = diary.decisions || []
+  const result = diary.result || {}
+
+  let html = ''
+
+  // 结果摘要
+  html += `<div style="margin-bottom:8px;padding:6px 10px;background:#0e2210;border:1px solid var(--green);border-radius:6px">`
+  html += `<div style="font-size:12px;font-weight:700;color:var(--green)">🤖 DriftAgent Play 日记</div>`
+  html += kv('关卡', esc(diary.level_id || ''), 'blue')
+  html += kv('技能', esc(diary.skill || ''), 'purple')
+  html += kv('结果', result.completed ? '通关' : '未通关', result.completed ? 'green' : 'red')
+  html += kv('死亡', String(result.deaths || 0), result.deaths ? 'red' : 'green')
+  html += kv('探索', String(result.exploration || 0), 'blue')
+  html += kv('决策数', String(decisions.length))
+  html += `</div>`
+
+  // 决策时间线（最后 50 条）
+  const recent = decisions.slice(-50)
+  html += `<div style="font-size:10px;color:var(--text-dim);margin-bottom:4px">📖 决策时间线 (最近 ${recent.length}/${decisions.length})</div>`
+
+  for (const d of recent) {
+    const levelColor = d.level === 'ACTION' ? 'var(--orange)'
+      : d.level === 'INFO' ? 'var(--blue)'
+      : d.level === 'DEBUG' ? 'var(--text-dim)'
+      : 'var(--text)'
+    html += `<div style="display:flex;gap:6px;padding:2px 0;border-bottom:1px solid #21262d;font-size:10px">`
+    html += `<span style="color:var(--text-dim);min-width:40px">S${d.step || 0}</span>`
+    html += `<span style="color:${levelColor};min-width:50px;font-weight:600">${esc(d.level || '')}</span>`
+    html += `<span style="color:var(--text);flex:1">${esc(d.message || '')}</span>`
+    html += `</div>`
+  }
+
+  el.className = 'result-block'
+  el.innerHTML = html
+  $('debugBadge').textContent = `${decisions.length} decisions`
+}
+
 /** Quick Publish: direct Drift inject + push-load (original behavior) */
 async function doPublishQuick(btn, text, levelId, playerId) {
   await withSpin(btn, async () => {
@@ -1350,6 +1470,12 @@ async function doPublishQuick(btn, text, levelId, playerId) {
       ? `✓ 关卡 ${esc(levelId)} 已推送给 ${esc(playerId)}`
       : `关卡已保存，玩家上线后可手动加载（${esc(pushMsg.slice(0,40))}）`
     setWorkflowStep(4)
+
+    // ── DriftAgent Play Mode: 自动触发 Agent 玩关卡 ──
+    if ((playerId || '').toLowerCase() === 'driftagent') {
+      triggerDriftAgentPlay(levelId, playerId)
+    }
+
     toast(pushOk ? `🚀 ${levelId} 已推送到 Minecraft！` : `💾 ${levelId} 已保存（玩家不在线）`, 'ok')
     await doRefreshState()
   }).catch(e => { toast('Publish 失败: ' + e.message, 'err') })
@@ -1536,6 +1662,12 @@ function startWorkflowPolling(workflowId, playerId, levelId) {
 
         // Sync timeline and state
         await syncAfterWorkflow(workflowId, playerId, levelId)
+
+        // ── DriftAgent Play Mode: 工作流完成后自动触发 Agent ──
+        const _playerId = $('playerId').value.trim()
+        if ((_playerId || '').toLowerCase() === 'driftagent') {
+          triggerDriftAgentPlay(levelId || $('levelId').value.trim(), _playerId)
+        }
 
       } else if (status === 'FAILED') {
         // Update pipeline steps one last time before settling (to show failed step)
