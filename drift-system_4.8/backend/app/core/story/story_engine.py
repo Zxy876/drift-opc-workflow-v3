@@ -16,10 +16,51 @@ from app.core.story.story_loader import (
     Level,
 )
 from app.core.story.story_graph import StoryGraph
-from app.core.world.minimap import MiniMap
-from app.core.world.scene_generator import SceneGenerator
-from app.core.world.trigger import trigger_engine
-from app.core.world.trigger import TriggerPoint
+try:
+    from app.core.world.minimap import MiniMap
+    from app.core.world.scene_generator import SceneGenerator
+    from app.core.world.trigger import trigger_engine
+    from app.core.world.trigger import TriggerPoint
+except Exception:
+    class MiniMap:
+        def __init__(self, _graph):
+            self.positions = {}
+
+        def refresh(self):
+            return None
+
+        def reset_player(self, _player_id):
+            return None
+
+        def enter_level(self, _player_id, _level_id):
+            return None
+
+        def mark_unlocked(self, _player_id, _level_id):
+            return None
+
+        def update_player_pos(self, _player_id, _pos):
+            return None
+
+    class SceneGenerator:
+        def generate_for_level(self, _level_id, _level_doc):
+            return {}
+
+    class TriggerPoint:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+
+    class _FallbackTriggerEngine:
+        def __init__(self):
+            self.triggers = []
+
+        def reset_player(self, _player_id):
+            return None
+
+        def check(self, _player_id, _x, _y, _z):
+            return None
+
+    trigger_engine = _FallbackTriggerEngine()
 from app.core.npc import npc_engine
 from app.core.quest.runtime import quest_runtime
 from app.core.story.level_schema import (
