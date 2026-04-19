@@ -526,6 +526,34 @@ class StrategyBot:
                     if goal:
                         self.level_goals.append(goal)
 
+                # 从 rule_document 提取补充信息
+                rule_doc = data.get("rule_document")
+                if rule_doc and isinstance(rule_doc, dict):
+                    objective = rule_doc.get("objective", "")
+                    win_cond = rule_doc.get("win_condition", "")
+                    items = rule_doc.get("items_guide", [])
+
+                    if not self.level_goals:
+                        if items:
+                            for item in items:
+                                name = str(item.get("name", "item")).lower().replace(" ", "_")
+                                self.level_goals.append({
+                                    "type": "collect",
+                                    "target": name,
+                                    "count": 3,
+                                    "source": "rule_document",
+                                })
+                        elif win_cond:
+                            self.level_goals.append({
+                                "type": "explore",
+                                "target": "objective",
+                                "desc": win_cond,
+                                "source": "rule_document",
+                            })
+
+                    if objective:
+                        self._broadcast("INFO", f"📋 目标: {objective}")
+
                 timeline = data.get("timeline", [])
                 for event in timeline:
                     s = event.get("state", {})
@@ -542,17 +570,66 @@ class StrategyBot:
             print(f"    [{self.skill_name}] 获取关卡目标失败: {e}")
 
     def _parse_rule_to_goal(self, rule: dict) -> dict | None:
-        """将 Drift 规则解析为 Bot 可理解的目标"""
+        """将 Drift 规则解析为 Bot 可理解的目标（增强版）"""
         condition = rule.get("condition", "")
         rule_type = rule.get("type", "")
+        desc = rule.get("desc", "")
 
         if rule_type == "win":
+            # Pattern 1a: collected_X >= N（收集类）
             m = re.match(r"collected_(\w+)\s*>=\s*(\d+)", condition)
             if m:
-                return {"type": "collect", "target": m.group(1), "count": int(m.group(2))}
-            m = re.match(r"reached_(\w+)\s*==\s*true", condition)
+                target = m.group(1)
+                count = int(m.group(2))
+                if target not in ("progress", "trigger", "condition", "count"):
+                    return {"type": "collect", "target": target, "count": count}
+                return {"type": "collect", "target": "item", "count": count}
+
+            # Pattern 1b: X_count >= N（收集类）
+            m = re.match(r"(\w+)_count\s*>=\s*(\d+)", condition)
+            if m:
+                target = m.group(1)
+                count = int(m.group(2))
+                if target in ("collected", "progress", "trigger", "condition"):
+                    return {"type": "collect", "target": "item", "count": count}
+                return {"type": "collect", "target": target, "count": count}
+
+            # Pattern 1c: progress >= N / collected_count >= N（通用收集进度）
+            m = re.match(r"(?:progress|collected_count)\s*>=\s*(\d+)", condition)
+            if m:
+                return {"type": "collect", "target": "item", "count": int(m.group(1))}
+
+            # Pattern 2: visited_X == 1 或 reached_X == 1/true（到达类）
+            m = re.match(r"(?:visited|reached)_(\w+)\s*==\s*(?:1|true)", condition, re.IGNORECASE)
             if m:
                 return {"type": "reach", "target": m.group(1)}
+
+            # Pattern 3: interacted_X == 1（交互类）
+            m = re.match(r"interacted_(\w+)\s*==\s*(?:1|true)", condition, re.IGNORECASE)
+            if m:
+                return {"type": "reach", "target": m.group(1)}
+
+            # Pattern 4: talked_to_X == 1（对话类）
+            m = re.match(r"talked_to_(\w+)\s*==\s*(?:1|true)", condition, re.IGNORECASE)
+            if m:
+                return {"type": "reach", "target": m.group(1)}
+
+            # Pattern 5: 从描述兜底推断
+            if desc:
+                collect_match = re.search(r"(?:收集|collect|gather|pick)\s*(\d+)?\s*(?:个|块|颗)?\s*(\w+)", desc, re.IGNORECASE)
+                if collect_match:
+                    count = int(collect_match.group(1) or 3)
+                    target = collect_match.group(2)
+                    return {"type": "collect", "target": target, "count": count}
+                reach_match = re.search(r"(?:到达|找到|reach|find|go to)\s+(\w+)", desc, re.IGNORECASE)
+                if reach_match:
+                    return {"type": "reach", "target": reach_match.group(1)}
+
+        elif rule_type == "lose":
+            if "guard" in condition or "detect" in condition:
+                return {"type": "avoid", "target": "guard"}
+            if "timer" in condition or "time" in condition:
+                return {"type": "time_pressure", "target": "timer"}
 
         return None
 

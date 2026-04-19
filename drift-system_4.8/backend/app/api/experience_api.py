@@ -116,6 +116,14 @@ def get_experience_state(player_id: str) -> Dict[str, Any]:
     # 时间线（精简）
     timeline = experience_debug_store.get_timeline(player_id)
 
+    # 加载 rule_document（如果存在）
+    rule_document = None
+    if level_id:
+        level_doc_full = _load_level_doc(level_id)
+        if level_doc_full:
+            meta_full = level_doc_full.get("meta") or {}
+            rule_document = meta_full.get("experience_rule_document")
+
     return {
         "status": progress_summary.get("status", "in_progress"),
         "level_id": level_id,
@@ -123,6 +131,7 @@ def get_experience_state(player_id: str) -> Dict[str, Any]:
         "progress": progress_summary.get("progress"),
         "active_rules": progress_summary.get("active_rules", []),
         "timeline": timeline,
+        "rule_document": rule_document,
     }
 
 

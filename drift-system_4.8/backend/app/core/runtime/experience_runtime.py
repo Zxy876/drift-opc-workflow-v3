@@ -255,7 +255,11 @@ def _eval_condition(condition: str, state: Dict[str, Any]) -> bool:
         if var_val is None:
             return False
         try:
-            lhs = float(var_val)
+            # 支持布尔值: True -> 1, False -> 0
+            if isinstance(var_val, bool):
+                lhs = 1.0 if var_val else 0.0
+            else:
+                lhs = float(var_val)
             rhs = float(threshold_str)
         except (TypeError, ValueError):
             return False
@@ -304,14 +308,20 @@ def _apply_trigger_to_state(
     target = str(trigger.get("target") or "").strip().lower().replace(" ", "_")
 
     if ttype == "item_collect":
-        # 同时更新目标专用计数器和通用计数器，覆盖不同 condition 写法
+        # 更新所有可能的计数器变量名，确保覆盖各种条件写法
         target_key = f"{target}_count" if target and target not in ("item", "") else "collected_count"
-        for key in {target_key, "collected_count"}:
+        count_keys = {target_key, "collected_count", f"collected_{target}"}
+        for key in list(new_state.keys()):
+            if ("count" in key or "collected" in key) and isinstance(new_state.get(key), (int, float)):
+                count_keys.add(key)
+        for key in count_keys:
             if key in new_state:
                 try:
                     new_state[key] = int(float(new_state[key])) + 1
                 except (TypeError, ValueError):
                     new_state[key] = 1
+            elif key in {target_key, "collected_count"}:
+                new_state[key] = 1
         # 通用 progress 计数器（如果 spec 中存在）
         if "progress" in new_state:
             try:
@@ -321,18 +331,18 @@ def _apply_trigger_to_state(
 
     elif ttype == "proximity":
         visited_key = f"visited_{target}" if target else "area_visited"
-        new_state[visited_key] = True
+        new_state[visited_key] = 1
 
     elif ttype == "interact":
         interacted_key = f"interacted_{target}" if target else "interacted"
-        new_state[interacted_key] = True
+        new_state[interacted_key] = 1
 
     elif ttype == "npc_talk":
         talked_key = f"talked_to_{target}" if target else "npc_talked"
-        new_state[talked_key] = True
+        new_state[talked_key] = 1
 
     elif ttype == "timer":
-        new_state["timer_fired"] = True
+        new_state["timer_fired"] = 1
 
     # 元数据记录
     new_state["_last_trigger_type"] = ttype

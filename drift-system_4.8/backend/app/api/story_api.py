@@ -3847,6 +3847,7 @@ def api_story_inject(payload: InjectPayload):
                 from app.core.runtime.experience_spec_compiler import (
                     compile_experience_spec,
                     experience_spec_summary,
+                    validate_spec_completeness,
                 )
                 from app.core.ai.intent_engine import classify_scene as _classify_scene
                 _scene_class = _classify_scene(payload.text)
@@ -3882,6 +3883,22 @@ def api_story_inject(payload: InjectPayload):
                 except Exception:
                     pass
                 _exp_summary = experience_spec_summary(_exp_spec)
+                # 编译后验证
+                try:
+                    _spec_warnings = validate_spec_completeness(_exp_spec)
+                    if _spec_warnings:
+                        _exp_spec["_compile_warnings"] = _spec_warnings
+                        level_doc["meta"]["experience_warnings"] = _spec_warnings
+                        logger.warning(
+                            "experience_spec_warnings",
+                            extra={
+                                "level_id": level_id,
+                                "warning_count": len(_spec_warnings),
+                                "warnings": _spec_warnings[:5],
+                            },
+                        )
+                except Exception:
+                    pass
                 # ── Phase 4A Bridge：将 exp_spec 接入运行时 ──────────────────
                 _exp_bridge = _bridge_exp_spec_to_world_patch(_exp_spec, level_id)
                 _mc_ensure = lambda: payload_with_scene.setdefault("mc", {}) or payload_with_scene["mc"]
@@ -3958,6 +3975,8 @@ def api_story_inject(payload: InjectPayload):
                 result["scene_world_patch"] = scene_patch
             if _exp_summary:
                 result["experience_spec_summary"] = _exp_summary
+            if _exp_spec and _exp_spec.get("_compile_warnings"):
+                result["experience_warnings"] = _exp_spec["_compile_warnings"]
             if isinstance(_exp_bridge, dict) and _exp_bridge.get("trigger_zones"):
                 result["experience_trigger_zones"] = _exp_bridge["trigger_zones"]
             if isinstance(_exp_bridge, dict) and _exp_bridge.get("rule_refs"):

@@ -251,6 +251,120 @@ def _extract_npc_hints_local(text: str) -> List[str]:
     return hints[:4]
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 条件标准化：确保所有条件都是可评估的 "var op N" 格式
+# ─────────────────────────────────────────────────────────────────────────────
+_CANONICAL_CONDITION_RE = re.compile(
+    r"([a-z_][a-z_0-9]*)\s*(>=|<=|==|>|<|!=)\s*([0-9]+(?:\.[0-9]+)?)",
+    re.IGNORECASE,
+)
+
+
+def _is_evaluable_condition(condition: str) -> bool:
+    """检查条件是否可被运行时评估器解析。"""
+    return bool(_CANONICAL_CONDITION_RE.search(condition or ""))
+
+
+def _normalize_condition(condition: str, rule_type: str, triggers: list) -> str:
+    """
+    将不可评估的条件转换为可评估格式。
+
+    规则：
+    - "player_achieves_goal" → 根据 triggers 推导实际条件
+    - "player_fails_condition" → 根据 triggers 推导失败条件
+    - "trigger_activated" → 转为对应的状态变量检查
+    - "XXX == true" → "XXX == 1"（布尔值转数值）
+    - 已经是 "var op N" 格式 → 保持不变
+    """
+    condition = str(condition or "")
+    normalized_bool = re.sub(r"==\s*true\b", "== 1", condition, flags=re.IGNORECASE)
+    normalized_bool = re.sub(r"==\s*false\b", "== 0", normalized_bool, flags=re.IGNORECASE)
+
+    if _is_evaluable_condition(normalized_bool):
+        return normalized_bool
+
+    item_triggers = [t for t in triggers if t.get("type") == "item_collect"]
+    proximity_triggers = [t for t in triggers if t.get("type") == "proximity"]
+    interact_triggers = [t for t in triggers if t.get("type") == "interact"]
+    npc_triggers = [t for t in triggers if t.get("type") == "npc_talk"]
+    timer_triggers = [t for t in triggers if t.get("type") == "timer"]
+
+    if rule_type == "win":
+        if item_triggers:
+            quantity = int(item_triggers[0].get("quantity", 3))
+            return f"collected_count >= {quantity}"
+        if proximity_triggers:
+            target = proximity_triggers[0].get("target", "zone").lower().replace(" ", "_")
+            return f"visited_{target} == 1"
+        if interact_triggers:
+            target = interact_triggers[0].get("target", "object").lower().replace(" ", "_")
+            return f"interacted_{target} == 1"
+        if npc_triggers:
+            target = npc_triggers[0].get("target", "npc").lower().replace(" ", "_")
+            return f"talked_to_{target} == 1"
+        return "progress >= 1"
+
+    if rule_type == "lose":
+        if timer_triggers:
+            return "timer_fired == 1"
+        guard_triggers = [t for t in triggers if t.get("type") == "guard_detect"]
+        if guard_triggers:
+            return "guard_detected == 1"
+        return "player_alive == 0"
+
+    if rule_type == "unlock":
+        if interact_triggers:
+            target = interact_triggers[0].get("target", "door").lower().replace(" ", "_")
+            return f"interacted_{target} == 1"
+        return "trigger_count >= 1"
+
+    if rule_type == "grant":
+        return "condition_count >= 1"
+
+    return normalized_bool
+
+
+def _normalize_all_conditions(spec: dict) -> dict:
+    """标准化 spec 中所有规则的条件格式。"""
+    rules = spec.get("rules") or []
+    triggers = spec.get("triggers") or []
+
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        condition = str(rule.get("condition") or "")
+        rule_type = str(rule.get("type") or "")
+        normalized = _normalize_condition(condition, rule_type, triggers)
+        if normalized != condition:
+            rule["_original_condition"] = condition
+            rule["condition"] = normalized
+
+    return spec
+
+
+def _ensure_state_variables(spec: dict) -> dict:
+    """确保 state.initial_values 包含所有条件引用的变量。"""
+    rules = spec.get("rules") or []
+    state = spec.get("state") or {}
+    variables = dict(state.get("variables") or {})
+    initial_values = dict(state.get("initial_values") or {})
+
+    for rule in rules:
+        condition = str(rule.get("condition") or "")
+        matches = _CANONICAL_CONDITION_RE.findall(condition)
+        for var_name, _, _ in matches:
+            if var_name in initial_values:
+                continue
+            if "alive" in var_name:
+                initial_values[var_name] = 1
+            else:
+                initial_values[var_name] = 0
+            variables[var_name] = "int"
+
+    spec["state"] = {"variables": variables, "initial_values": initial_values}
+    return spec
+
+
 def _compile_local(text: str, scene_class: str) -> Dict[str, Any]:
     rules = _extract_rules_local(text)
     triggers = _extract_triggers_local(text)
@@ -386,6 +500,10 @@ def compile_experience_spec(
     else:
         spec = _compile_local(normalized, scene_class)
 
+    # 条件标准化 + 状态变量补全
+    spec = _normalize_all_conditions(spec)
+    spec = _ensure_state_variables(spec)
+
     try:
         from app.core.runtime.rule_document_generator import generate_rule_document
 
@@ -422,3 +540,47 @@ def experience_spec_summary(spec: Dict[str, Any]) -> Dict[str, Any]:
         "has_proximity_triggers": any(t.get("type") == "proximity" for t in triggers),
         "is_empty": not rules and not triggers and not variables,
     }
+
+
+def validate_spec_completeness(spec: dict) -> list[str]:
+    """
+    验证 ExperienceSpec 的完整性和可执行性。
+    返回警告消息列表。
+    """
+    warnings: list[str] = []
+    rules = spec.get("rules") or []
+    triggers = spec.get("triggers") or []
+    state = spec.get("state") or {}
+    initial_values = state.get("initial_values") or {}
+
+    if rules and not triggers:
+        warnings.append("⚠ 有规则但无触发器：规则条件永远不会被满足。请添加至少一个触发器（如 item_collect, proximity 等）。")
+
+    if triggers and not rules:
+        warnings.append("⚠ 有触发器但无规则：事件会触发但没有胜利/失败判定。请添加 win 或 lose 规则。")
+
+    for rule in rules:
+        condition = str(rule.get("condition") or "")
+        matches = _CANONICAL_CONDITION_RE.findall(condition)
+        for var_name, _, _ in matches:
+            if var_name not in initial_values:
+                warnings.append(f"⚠ 规则条件引用变量 '{var_name}' 但初始状态中未定义。")
+
+    for rule in rules:
+        condition = str(rule.get("condition") or "")
+        if condition and not _is_evaluable_condition(condition):
+            warnings.append(f"⚠ 规则条件 '{condition}' 不是可评估格式（需要 'var op N' 格式）。")
+
+    has_win = any(r.get("type") == "win" for r in rules)
+    if not has_win and rules:
+        warnings.append("⚠ 没有 win（胜利）条件：玩家无法通关。")
+
+    has_collect_trigger = any(t.get("type") == "item_collect" for t in triggers)
+    has_collect_condition = any(
+        "collected" in str(r.get("condition", "")) or "count" in str(r.get("condition", ""))
+        for r in rules
+    )
+    if has_collect_trigger and not has_collect_condition:
+        warnings.append("⚠ 有 item_collect 触发器但没有收集计数条件。触发事件不会推进规则。")
+
+    return warnings

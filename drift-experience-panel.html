@@ -1430,6 +1430,21 @@ function renderDiary(diary) {
   $('debugBadge').textContent = `${decisions.length} decisions`
 }
 
+function renderCompileWarnings(warnings) {
+  if (!warnings || !warnings.length) return
+  const host = $('injectResult')
+  if (!host) return
+  let warnHtml = '<div style="margin-top:8px;padding:6px 10px;background:#2d1b00;border:1px solid var(--orange);border-radius:6px">'
+  warnHtml += '<div style="font-size:11px;font-weight:700;color:var(--orange)">⚠ 规则编译警告</div>'
+  for (const w of warnings) {
+    warnHtml += `<div style="font-size:10px;color:var(--text-dim);padding:2px 0">${esc(w)}</div>`
+  }
+  warnHtml += '</div>'
+  const warningEl = document.createElement('div')
+  warningEl.innerHTML = warnHtml
+  host.appendChild(warningEl)
+}
+
 /** Quick Publish: direct Drift inject + push-load (original behavior) */
 async function doPublishQuick(btn, text, levelId, playerId) {
   await withSpin(btn, async () => {
@@ -1439,6 +1454,7 @@ async function doPublishQuick(btn, text, levelId, playerId) {
       text, player_id: playerId,
     })
     const es = ri.experience_spec_summary || {}
+    const compileWarnings = ri.experience_warnings || []
     $('injectBadge').textContent = '✓ published'
     let pushOk = false
     let pushMsg = ''
@@ -1462,6 +1478,7 @@ async function doPublishQuick(btn, text, levelId, playerId) {
     const el = $('injectResult')
     el.className = 'result-block'
     el.innerHTML = html
+    renderCompileWarnings(compileWarnings)
 
     const dot = $('mcFeedbackDot')
     const txt = $('mcFeedbackText')
@@ -1492,6 +1509,7 @@ async function doPublishPremium(btn, text, levelId, playerId) {
       player_id: playerId,
     })
     const es = ri.experience_spec_summary || {}
+    const compileWarnings = ri.experience_warnings || []
     toast(`关卡 ${levelId} 已编译（${es.rule_count || 0} rules），提交 Premium 增强...`, 'ok')
 
     // ── Step 2: 推送到 MC（最佳努力，玩家不在线也不影响后续） ──
@@ -1533,6 +1551,7 @@ async function doPublishPremium(btn, text, levelId, playerId) {
       + kv('mode', 'Beam Search + 叙事弧', 'purple')
       + kv('beam_width', '2 paths', 'green')
       + kv('rounds', '2 rounds', 'green')
+    renderCompileWarnings(compileWarnings)
     toast(`Premium #${workflowId} 已提交（Beam Search + 叙事弧）`, 'ok')
   }).catch(e => { toast('Premium 提交失败: ' + e.message, 'err') })
 }
@@ -1551,6 +1570,7 @@ async function doPublishAsyncAIFlow(btn, text, levelId, playerId, difficulty) {
 
     // Extract workflowId from response
     const data = r.data || r
+    const compileWarnings = data.experience_warnings || r.experience_warnings || []
     const workflowId = data.workflowId || data.workflow_id
     if (!workflowId) {
       throw new Error('AsyncAIFlow 未返回 workflowId')
@@ -1571,6 +1591,7 @@ async function doPublishAsyncAIFlow(btn, text, levelId, playerId, difficulty) {
       + kv('workflowId', esc(String(workflowId)), 'cyan')
       + kv('difficulty', String(difficulty) + '★', 'purple')
       + kv('mode', 'AsyncAIFlow Pipeline D' + difficulty + '★', 'blue')
+    renderCompileWarnings(compileWarnings)
 
     toast(`AsyncAIFlow 工作流 #${workflowId} 已提交！`, 'ok')
   }).catch(e => { toast('AsyncAIFlow 提交失败: ' + e.message, 'err') })
