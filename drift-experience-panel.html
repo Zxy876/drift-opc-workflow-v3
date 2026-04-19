@@ -722,7 +722,19 @@ textarea { min-height: 80px; }
 <script>
 /* ─── Globals ──────────────────────────────────────────────────── */
 const $ = id => document.getElementById(id)
-const DEFAULT_BASE = () => window.location.origin
+function detectDefaultBackendBase() {
+  const url = new URL(window.location.href)
+  const forced = url.searchParams.get('backend') || url.searchParams.get('base')
+  if (forced) return forced.replace(/\/$/, '')
+
+  // If panel is served by static server (:8888), backend usually runs on :8000.
+  if (url.port === '8888') {
+    return `${url.protocol}//${url.hostname}:8000`
+  }
+  return url.origin
+}
+
+const DEFAULT_BASE = () => detectDefaultBackendBase()
 const DEFAULT_ASYNC_BASE = () => `${window.location.protocol}//${window.location.hostname}:8080`
 const BASE = () => ($('baseUrl').value || DEFAULT_BASE()).replace(/\/$/, '')
 const ASYNC_BASE = () => ($('asyncUrl').value || DEFAULT_ASYNC_BASE()).replace(/\/$/, '')
@@ -780,6 +792,14 @@ function renderKV(obj, colorMap = {}) {
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;')
+}
+
+function formatTimeSafe(ts) {
+  if (ts === undefined || ts === null || ts === '') return ''
+  const num = Number(ts)
+  const d = Number.isFinite(num) ? new Date(num) : new Date(ts)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleTimeString()
 }
 
 /* ─── Health check ─────────────────────────────────────────────── */
@@ -2127,7 +2147,7 @@ async function doRefreshTimeline() {
           <div class="tl-event">${esc(e.event || '—')}
             ${e.outcome ? `<span class="tl-${isWin?'win':isLose?'lose':'none'}" style="margin-left:6px;font-size:11px">${esc(e.outcome.toUpperCase())}</span>` : ''}
           </div>
-          <div class="tl-meta">#${i+1}${e.ts_ms ? ' · ' + new Date(e.ts_ms).toLocaleTimeString() : ''} · ${stateStr || '—'}</div>
+          <div class="tl-meta">#${i+1}${formatTimeSafe(e.ts_ms) ? ' · ' + formatTimeSafe(e.ts_ms) : ''} · ${stateStr || '—'}</div>
         </div>
       </div>`
     }).join('')
@@ -2235,6 +2255,8 @@ const sleep = ms => new Promise(res => setTimeout(res, ms))
 
 /* ─── Auto-init ────────────────────────────────────────────────── */
 window.addEventListener('DOMContentLoaded', () => {
+  $('baseUrl').value = DEFAULT_BASE()
+  $('asyncUrl').value = DEFAULT_ASYNC_BASE()
   checkHealth()
   setWorkflowStep(1)
   // Fill textarea with default turtle-soup example
