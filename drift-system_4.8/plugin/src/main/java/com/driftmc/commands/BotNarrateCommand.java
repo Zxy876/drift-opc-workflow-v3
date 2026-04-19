@@ -55,11 +55,13 @@ public class BotNarrateCommand implements CommandExecutor {
                     break;
                 case "ACTION":
                     player.sendActionBar(Component.text("[DriftAgent] " + message, NamedTextColor.GOLD));
+                    player.sendMessage(BOT_PREFIX + "§7" + message);
                     break;
                 case "INFO":
                     player.sendMessage(BOT_PREFIX + message);
                     break;
                 case "DEBUG":
+                    player.sendActionBar(Component.text("[DriftAgent] " + message, NamedTextColor.GRAY));
                     break;
                 default:
                     player.sendMessage(BOT_PREFIX + message);
