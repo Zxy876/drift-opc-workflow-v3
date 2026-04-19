@@ -90,14 +90,14 @@ body {
 .btn-demo:hover { opacity: 0.85; }
 .btn-demo:disabled { opacity: 0.4; cursor: not-allowed; }
 
-/* ─── Layout: 6 panels in a 3×2 grid ──────────────────────────── */
+/* ─── Layout: 7 panels in a 3-row grid ─────────────────────────── */
 .panels {
   flex: 1;
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
+  grid-template-rows: 1fr 1fr auto;
   gap: 0;
-  overflow: hidden;
+  overflow-y: auto;
 }
 .panel {
   border-right: 1px solid var(--border);
