@@ -158,10 +158,14 @@ function createBot() {
     chatHistory.push({ time: Date.now(), text })
     if (chatHistory.length > MAX_CHAT_HISTORY) chatHistory.shift()
 
+    // 过滤 Bot 自身广播回声，防止触发器/通关检测无限循环
+    if (text.includes('[DriftAgent]')) return
+
     // 检测关卡事件（BUG-A：删除宽泛的'关卡完成'匹配，增加 5s 时间保护）
-    if ((text.includes('恭喜') && text.includes('通关'))
+    if (!levelCompleted &&
+        ((text.includes('恭喜') && text.includes('通关'))
         || text.includes('level completed')
-        || text.includes('挑战成功')) {
+        || text.includes('挑战成功'))) {
       if (Date.now() - levelResetTime > 5000) {
         levelCompleted = true
         if (bot && bot.entity) {
@@ -358,6 +362,7 @@ function resetLevelFlags() {
   triggersCompleted = 0
   chatHistory.length = 0
   levelResetTime = Date.now()  // BUG-A: 记录重置时间，防止关卡加载消息触发假阳性
+  pendingDeathBroadcast = null
 }
 
 // ─── TCP Bridge 服务器 ──────────────────────────────────────

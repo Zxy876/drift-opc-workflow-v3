@@ -74,11 +74,10 @@ class StrategyBot:
         if not self.broadcast_enabled:
             return
         try:
-            # Keep command under typical MC chat command length constraints.
             safe = str(msg or "").replace("\n", " ").strip()
             if len(safe) > 220:
                 safe = safe[:220]
-            self.client.chat(f"/botnarrate {level} {safe}")
+            self.client.broadcast(level, safe)
         except Exception:
             pass
 
@@ -320,7 +319,8 @@ class StrategyBot:
         if self.stuck_counter >= self.profile["stuck_patience"]:
             self._handle_stuck(state)
         else:
-            self._broadcast("DEBUG", f"🧭 探索中 (半径 {self.profile['exploration_radius']})")
+            if self.steps % 100 == 0:  # 每 ~5 秒广播一次，避免刷屏
+                self._broadcast("DEBUG", f"🧭 探索中 (半径 {self.profile['exploration_radius']})")
             self._handle_smart_explore(state)
 
     def _handle_danger(self, state: dict):

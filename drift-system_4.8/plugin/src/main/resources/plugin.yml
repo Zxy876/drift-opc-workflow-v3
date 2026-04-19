@@ -160,4 +160,4 @@ permissions:
 
   driftmc.botnarrate:
     description: "允许使用 /botnarrate 命令"
-    default: op
+    default: true
