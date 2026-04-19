@@ -64,6 +64,9 @@ public final class SceneAwareWorldPatchExecutor extends WorldPatchExecutor {
         if (player != null && patch != null && !patch.isEmpty()) {
             inspectObject(player, patch);
             Object mcObj = patch.get("mc");
+            if (mcObj instanceof Map<?, ?> mcMap) {
+                sendRuleDocumentTells(player, mcMap);
+            }
             if (mcObj instanceof Map) {
                 inspectObject(player, (Map<?, ?>) mcObj);
             } else if (mcObj instanceof List) {
@@ -76,6 +79,41 @@ public final class SceneAwareWorldPatchExecutor extends WorldPatchExecutor {
             }
         }
         super.execute(player, patch);
+    }
+
+    private void sendRuleDocumentTells(Player player, Map<?, ?> mcMap) {
+        if (player == null || mcMap == null || mcMap.isEmpty()) {
+            return;
+        }
+        Object raw = mcMap.get("_rule_document_tells");
+        if (!(raw instanceof List<?> tellsRaw) || tellsRaw.isEmpty()) {
+            return;
+        }
+        List<String> tells = new ArrayList<>();
+        for (Object entry : tellsRaw) {
+            if (entry == null) {
+                continue;
+            }
+            String text = String.valueOf(entry).trim();
+            if (!text.isEmpty()) {
+                tells.add(text);
+            }
+        }
+        if (tells.isEmpty()) {
+            return;
+        }
+
+        Bukkit.getScheduler().runTaskLater(getPlugin(), () -> {
+            for (int i = 0; i < tells.size(); i++) {
+                final String tell = tells.get(i);
+                final long delay = i * 40L;
+                Bukkit.getScheduler().runTaskLater(getPlugin(), () -> {
+                    if (player.isOnline()) {
+                        player.sendMessage(tell);
+                    }
+                }, delay);
+            }
+        }, 60L);
     }
 
     public void attachTutorialStateMachine(TutorialStateMachine stateMachine) {

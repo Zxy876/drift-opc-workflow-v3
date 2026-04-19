@@ -32,6 +32,10 @@ from app.core.runtime.experience_debug_store import (
     experience_debug_store,
     summarize_progress,
 )
+from app.core.runtime.rule_document_generator import (
+    generate_rule_document,
+    rule_document_to_mc_tells,
+)
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -251,6 +255,12 @@ class _ValidateRequest(BaseModel):
     design_spec: Optional[Dict[str, Any]] = None
 
 
+class RuleDocRequest(BaseModel):
+    level_id: str
+    design_text: str = ""
+    use_llm: bool = True
+
+
 def _build_design_spec_from_dict(d: Dict[str, Any]):
     """从字典重建 DesignSpec（用于 validate 端点直接传入结构体时）。"""
     from app.core.runtime.experience_design_parser import DesignSpec, TriggerSpec
@@ -334,12 +344,44 @@ def preview_experience_design(req: _PreviewRequest) -> Dict[str, Any]:
     warnings = generate_warnings(design)
     summary = experience_spec_summary(exp_spec)
     _, completeness_score = validate_design_spec(design)
+    rule_doc = generate_rule_document(exp_spec, text, use_llm=True)
 
     return {
         "design_spec": design.to_dict(),
         "experience_spec_summary": summary,
         "completeness_score": completeness_score,
+        "rule_document": rule_doc,
         "warnings": warnings,
+    }
+
+
+@router.post("/rule-doc")
+def get_rule_document(req: RuleDocRequest) -> Dict[str, Any]:
+    """生成 RuleDocument：将 ExperienceSpec 转换为玩家可读规则文档。"""
+    spec: Optional[Dict[str, Any]] = None
+    level_id = str(req.level_id or "").strip()
+    if level_id:
+        spec = _load_exp_spec(level_id)
+
+    if not spec and req.design_text:
+        from app.core.runtime.experience_spec_compiler import compile_experience_spec
+
+        spec = compile_experience_spec(req.design_text, use_llm=req.use_llm)
+
+    if not spec:
+        raise HTTPException(
+            status_code=404,
+            detail="No ExperienceSpec found. Provide design_text or inject first.",
+        )
+
+    rule_doc = generate_rule_document(spec, req.design_text, use_llm=req.use_llm)
+    mc_tells = rule_document_to_mc_tells(rule_doc)
+
+    return {
+        "level_id": level_id,
+        "rule_document": rule_doc,
+        "mc_tells": mc_tells,
+        "tell_count": len(mc_tells),
     }
 
 

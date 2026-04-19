@@ -1190,6 +1190,16 @@ class StoryEngine:
             "tell": f"进入剧情：《{level.title}》",
         }
         merge_mc(base_mc, safe_tp_mc)
+
+        # Attach player-facing rule-document hints generated at inject time.
+        level_meta = level.meta or {}
+        _rule_doc_tells = level_meta.get("experience_rule_document_tells")
+        if isinstance(_rule_doc_tells, list) and _rule_doc_tells:
+            base_mc["_rule_document_tells"] = [str(x) for x in _rule_doc_tells if str(x).strip()]
+        _rule_doc = level_meta.get("experience_rule_document")
+        if isinstance(_rule_doc, dict) and _rule_doc:
+            base_mc["_rule_document"] = dict(_rule_doc)
+
         self._attach_scene_metadata(base_mc, level)
 
         base_patch["mc"] = base_mc

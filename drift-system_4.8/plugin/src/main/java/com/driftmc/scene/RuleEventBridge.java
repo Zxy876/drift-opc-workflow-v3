@@ -577,6 +577,28 @@ public final class RuleEventBridge {
         }
 
         if (worldPatch != null && worldPatch.size() > 0) {
+            if (worldPatch.has("mc") && worldPatch.get("mc").isJsonObject()) {
+                JsonObject mc = worldPatch.getAsJsonObject("mc");
+                if (mc.has("_rule_document_tells") && mc.get("_rule_document_tells").isJsonArray()) {
+                    JsonArray tells = mc.getAsJsonArray("_rule_document_tells");
+                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                        for (int i = 0; i < tells.size(); i++) {
+                            JsonElement tellEl = tells.get(i);
+                            if (tellEl == null || !tellEl.isJsonPrimitive()) {
+                                continue;
+                            }
+                            String tellMsg = tellEl.getAsString();
+                            long delayTicks = i * 40L;
+                            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                                if (player.isOnline()) {
+                                    player.sendMessage(tellMsg);
+                                }
+                            }, delayTicks);
+                        }
+                    }, 60L);
+                }
+            }
+
             Map<String, Object> patch = gson.fromJson(worldPatch, MAP_TYPE);
             if (patch != null && !patch.isEmpty()) {
                 if (tutorialManager != null) {

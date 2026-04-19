@@ -459,7 +459,7 @@ textarea { min-height: 80px; }
   <div class="wf-step" id="wfStep4">🎮 实体验</div>
 </div>
 
-<!-- ─── 6 Panels ─────────────────────────────────────────────────── -->
+<!-- ─── 7 Panels ─────────────────────────────────────────────────── -->
 <div class="panels">
 
   <!-- ① Design Panel -->
@@ -700,6 +700,20 @@ textarea { min-height: 80px; }
     </div>
   </div>
 
+  <!-- ⑦ Rule Document Panel -->
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title">⑦ Rule Document</span>
+      <div style="display:flex;gap:6px;align-items:center">
+        <span class="panel-badge" id="ruleDocBadge">—</span>
+        <button class="btn btn-sm btn-cyan" onclick="doGenerateRuleDoc()" style="padding:2px 8px;font-size:10px;">📜 Generate</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="result-block empty" id="ruleDocResult">Preview 后点击 Generate 生成规则文档</div>
+    </div>
+  </div>
+
 </div><!-- .panels -->
 
 <!-- Toast -->
@@ -876,8 +890,101 @@ async function _doPreviewCore(text) {
   const el = $('designResult')
   el.className = 'result-block'
   el.innerHTML = html
+
+  if (r.rule_document) {
+    renderRuleDoc(r.rule_document, r.mc_tells || [])
+  }
+
   setWorkflowStep(2)
   return r
+}
+
+function renderRuleDoc(doc, mcTells = []) {
+  const el = $('ruleDocResult')
+  if (!el) return
+
+  let html = ''
+
+  if (doc.story_intro) {
+    html += `<div style="margin-bottom:8px">
+      <div class="k" style="color:var(--orange)">📖 故事背景</div>
+      <div style="color:var(--fg);padding:4px 0;line-height:1.5">${esc(doc.story_intro)}</div>
+    </div>`
+  }
+  if (doc.objective) html += kv('🎯 任务目标', esc(doc.objective), 'yellow')
+  if (doc.win_condition) html += kv('✅ 胜利条件', esc(doc.win_condition), 'green')
+  if (doc.lose_condition) html += kv('❌ 失败条件', esc(doc.lose_condition), 'red')
+  if (doc.time_limit) html += kv('⏱ 时间限制', doc.time_limit + ' 秒', 'blue')
+
+  const items = doc.items_guide || []
+  if (items.length) {
+    html += `<div style="margin:8px 0 4px"><span class="k" style="color:var(--purple)">📦 物品图鉴</span></div>`
+    for (const item of items) {
+      html += `<div style="padding:2px 0 2px 12px;font-size:10px;color:var(--text-dim)">
+        · <span style="color:var(--fg)">${esc(item.name || '')}</span>
+        <span style="color:var(--cyan)">[${esc(item.mc_item || '')}]</span>
+        — ${esc(item.appearance || '')} — ${esc(item.how_to_get || '')}
+      </div>`
+    }
+  }
+
+  const npcs = doc.npc_guide || []
+  if (npcs.length) {
+    html += `<div style="margin:8px 0 4px"><span class="k" style="color:var(--purple)">👤 NPC 指南</span></div>`
+    for (const npc of npcs) {
+      html += `<div style="padding:2px 0 2px 12px;font-size:10px;color:var(--text-dim)">
+        · <span style="color:var(--fg)">${esc(npc.name || '')}</span>
+        <span style="color:var(--cyan)">[${esc(npc.mc_entity || '')}]</span>
+        — ${esc(npc.behavior || '')} (${esc(npc.interaction || '')})
+      </div>`
+    }
+  }
+
+  if (doc.controls_hint) html += kv('🎮 操作提示', esc(doc.controls_hint), 'cyan')
+
+  if (mcTells && mcTells.length) {
+    html += `<div style="margin:10px 0 4px"><span class="k" style="color:var(--green)">MC 推送预览 (${mcTells.length} 条)</span></div>`
+    html += `<pre style="font-size:9px;line-height:1.4;background:#0d1117;padding:6px;border-radius:4px;max-height:120px;overflow-y:auto;color:var(--text-dim)">`
+    for (const tell of mcTells) {
+      html += esc(String(tell || '').replace(/§[0-9a-frlonmk]/gi, '')) + '\n'
+    }
+    html += `</pre>`
+  }
+
+  if (!html) {
+    el.className = 'result-block empty'
+    el.textContent = '暂无可用规则文档'
+    $('ruleDocBadge').textContent = 'empty'
+    return
+  }
+
+  el.className = 'result-block'
+  el.innerHTML = html
+  $('ruleDocBadge').textContent = `✓ ${items.length} items, ${npcs.length} npcs`
+}
+
+async function doGenerateRuleDoc() {
+  const levelId = $('levelId').value.trim()
+  const text = $('designText').value.trim()
+  if (!levelId && !text) { toast('请填写 level_id 或设计描述', 'err'); return }
+
+  const el = $('ruleDocResult')
+  el.className = 'result-block'
+  el.innerHTML = '<span class="spinner"></span> 生成中...'
+
+  try {
+    const r = await POST('/experience/rule-doc', {
+      level_id: levelId || 'preview',
+      design_text: text,
+      use_llm: true,
+    })
+
+    renderRuleDoc(r.rule_document || {}, r.mc_tells || [])
+    toast('Rule Document 生成完成', 'ok')
+  } catch (e) {
+    el.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`
+    toast('生成失败: ' + e.message, 'err')
+  }
 }
 
 async function doPreview() {

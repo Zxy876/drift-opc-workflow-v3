@@ -93,6 +93,19 @@ _SYSTEM_PROMPT = """\
 - 敌对/guard 触发器：必须填 mc_entity_type 和 semantic，aggro_range 建议8-15
 - 禁止包含 blocks/world_patch/mc/build 字段
 - 禁止超过 1200 tokens
+
+同时生成 rule_document 字段（玩家可读规则文档）：
+{
+    "rule_document": {
+        "story_intro": "2-4句话的故事背景（第二人称，让玩家代入）",
+        "objective": "一句话任务目标",
+        "win_condition": "简明胜利条件",
+        "lose_condition": "简明失败条件",
+        "items_guide": [{"name": "物品语义名", "appearance": "外观描述", "how_to_get": "获取方式"}],
+        "npc_guide": [{"name": "NPC名", "behavior": "行为", "interaction": "互动方式"}],
+        "controls_hint": "操作提示（用 | 分隔）"
+    }
+}
 """
 
 _FORBIDDEN_INPUTS = ("ignore previous", "忽略上面", "system:", "你现在是", "JAILBREAK")
@@ -329,6 +342,7 @@ def _compile_llm(text: str, scene_class: str) -> Dict[str, Any]:
         "state": dict(result.get("state") or {"variables": {}, "initial_values": {}}),
         "npc_hints": list(result.get("npc_hints") or []),
         "beats": list(result.get("beats") or []),
+        "rule_document": result.get("rule_document") if isinstance(result.get("rule_document"), dict) else None,
         "compiler_mode": "llm",
     }
 
@@ -368,9 +382,20 @@ def compile_experience_spec(
         return spec
 
     if use_llm and API_KEY:
-        return _compile_llm(normalized, scene_class)
+        spec = _compile_llm(normalized, scene_class)
+    else:
+        spec = _compile_local(normalized, scene_class)
 
-    return _compile_local(normalized, scene_class)
+    try:
+        from app.core.runtime.rule_document_generator import generate_rule_document
+
+        existing_rule_doc = spec.get("rule_document")
+        if not isinstance(existing_rule_doc, dict):
+            spec["rule_document"] = generate_rule_document(spec, normalized, use_llm=use_llm)
+    except Exception:
+        pass
+
+    return spec
 
 
 def experience_spec_summary(spec: Dict[str, Any]) -> Dict[str, Any]:

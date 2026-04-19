@@ -3119,6 +3119,8 @@ def _bridge_exp_spec_to_world_patch(
     spawn_multi: list[Dict[str, Any]] = []
     rule_refs: list[str] = []
     experience_state: Dict[str, Any] = {}
+    rule_document: Dict[str, Any] = {}
+    rule_document_tells: list[str] = []
 
     # ── collect initial_values so we can infer spawn counts ──────────────────
     state_block = exp_spec.get("state") or {}
@@ -3330,11 +3332,30 @@ def _bridge_exp_spec_to_world_patch(
         if isinstance(initial, dict):
             experience_state = dict(initial)
 
+    # ── 4. rule_document / mc tells ─────────────────────────────────────────
+    try:
+        from app.core.runtime.rule_document_generator import (
+            generate_rule_document as _gen_rule_doc,
+            rule_document_to_mc_tells as _doc_to_tells,
+        )
+
+        _existing_doc = exp_spec.get("rule_document")
+        if isinstance(_existing_doc, dict):
+            rule_document = dict(_existing_doc)
+        else:
+            rule_document = _gen_rule_doc(exp_spec, "", use_llm=False)
+        rule_document_tells = [str(x) for x in (_doc_to_tells(rule_document) or []) if str(x).strip()]
+    except Exception:
+        rule_document = {}
+        rule_document_tells = []
+
     return {
         "trigger_zones": trigger_zones,
         "spawn_multi": spawn_multi,
         "rule_refs": rule_refs,
         "experience_state": experience_state,
+        "rule_document": rule_document,
+        "rule_document_tells": rule_document_tells,
     }
 
 
@@ -3882,6 +3903,14 @@ def api_story_inject(payload: InjectPayload):
                     level_doc["meta"]["experience_rule_refs"] = _exp_bridge["rule_refs"]
                 if _exp_bridge.get("experience_state"):
                     level_doc["meta"]["experience_state"] = _exp_bridge["experience_state"]
+                if _exp_bridge.get("rule_document"):
+                    level_doc["meta"]["experience_rule_document"] = _exp_bridge["rule_document"]
+                if _exp_bridge.get("rule_document_tells"):
+                    level_doc["meta"]["experience_rule_document_tells"] = _exp_bridge["rule_document_tells"]
+                    _mc = _mc_ensure()
+                    _mc["_rule_document_tells"] = list(_exp_bridge["rule_document_tells"])
+                    if _exp_bridge.get("rule_document"):
+                        _mc["_rule_document"] = dict(_exp_bridge["rule_document"])
             except Exception:
                 _exp_spec = None
                 _exp_summary = None
@@ -4214,6 +4243,14 @@ def api_story_inject(payload: InjectPayload):
             data["meta"]["experience_rule_refs"] = _exp_bridge_fb["rule_refs"]
         if _exp_bridge_fb.get("experience_state"):
             data["meta"]["experience_state"] = _exp_bridge_fb["experience_state"]
+        if _exp_bridge_fb.get("rule_document"):
+            data["meta"]["experience_rule_document"] = _exp_bridge_fb["rule_document"]
+        if _exp_bridge_fb.get("rule_document_tells"):
+            data["meta"]["experience_rule_document_tells"] = _exp_bridge_fb["rule_document_tells"]
+            _fb_mc = _fb_mc_ensure()
+            _fb_mc["_rule_document_tells"] = list(_exp_bridge_fb["rule_document_tells"])
+            if _exp_bridge_fb.get("rule_document"):
+                _fb_mc["_rule_document"] = dict(_exp_bridge_fb["rule_document"])
     except Exception:
         _exp_spec_fb = None
         _exp_summary_fb = None
