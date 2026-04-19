@@ -3919,6 +3919,30 @@ def api_story_inject(payload: InjectPayload):
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(level_doc, f, ensure_ascii=False, indent=2)
 
+            # ── GitHub Projects 集成：自动创建 Project Item ──
+            try:
+                from app.api.github_projects import create_project_item_async
+
+                _gh_extra = {}
+                if _exp_summary:
+                    _gh_extra["experience_spec"] = str(_exp_summary)[:200]
+                if level_doc.get("meta", {}).get("simulation"):
+                    _sim = level_doc["meta"]["simulation"]
+                    _gh_extra["win_rate"] = f"{_sim.get('win_rate', 0):.0%}"
+                    _gh_extra["difficulty_label"] = _sim.get("difficulty", "unknown")
+
+                create_project_item_async(
+                    level_id=level_id,
+                    title=payload.title,
+                    text=(payload.text or "")[:500],
+                    difficulty=payload.difficulty,
+                    player_id=payload.player_id,
+                    source="panel",
+                    extra_meta=_gh_extra if _gh_extra else None,
+                )
+            except Exception:
+                pass
+
             result = dict(payload_with_scene)
             result.update({
                 "status": "ok",
@@ -4259,6 +4283,21 @@ def api_story_inject(payload: InjectPayload):
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+    # ── GitHub Projects 集成 ──
+    try:
+        from app.api.github_projects import create_project_item_async
+
+        create_project_item_async(
+            level_id=level_id,
+            title=payload.title,
+            text=(payload.text or "")[:500],
+            difficulty=payload.difficulty,
+            player_id=payload.player_id,
+            source="panel",
+        )
+    except Exception:
+        pass
+
     result = {
         "status": "ok",
         "msg": f"Level {level_id} created with AI-generated world",
@@ -4494,6 +4533,20 @@ def api_story_refresh(payload: StoryRefreshPayload):
         log.append(entry)
         if len(log) > _MAX_LOG_PER_PLAYER:
             _progress_log[player_id] = log[-_MAX_LOG_PER_PLAYER:]
+
+    # ── GitHub Projects 集成（AI refresh 来源）──
+    try:
+        from app.api.github_projects import create_project_item_async
+
+        create_project_item_async(
+            level_id=level_id,
+            title=f"[AI] {summary[:60]}",
+            text=inject_text[:500],
+            source="ai_refresh",
+            extra_meta={"workflow_id": workflow_id} if workflow_id else None,
+        )
+    except Exception:
+        pass
 
     return {
         "ok": True,

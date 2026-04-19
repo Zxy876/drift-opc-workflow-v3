@@ -206,6 +206,26 @@ async def start_evolution(req: _StartEvolutionRequest):
             rc = proc.returncode
             if rc == 0:
                 _sessions[session_id]["status"] = "completed"
+                # ── GitHub Projects: 标记进化完成 ──
+                try:
+                    from app.api.github_projects import update_project_item_status
+
+                    _final_status = "In Flow Zone"
+                    if os.path.exists(status_file):
+                        try:
+                            with open(status_file, "r") as _sf:
+                                _evo_data = json.load(_sf)
+                            _final_cr = _evo_data.get("completion_rate", 0)
+                            if 0.6 <= _final_cr <= 0.8:
+                                _final_status = "In Flow Zone"
+                            else:
+                                _final_status = "Done"
+                        except Exception:
+                            _final_status = "Done"
+
+                    update_project_item_status(level_arg, _final_status)
+                except Exception:
+                    pass
             elif rc in (-2, -signal.SIGINT, 130):  # SIGINT / Ctrl+C 优雅退出
                 _sessions[session_id]["status"] = "stopped"
             else:
@@ -223,6 +243,14 @@ async def start_evolution(req: _StartEvolutionRequest):
             _sessions[session_id]["error"] = str(exc)
 
     threading.Thread(target=_run, daemon=True).start()
+
+    # ── GitHub Projects: 标记关卡为 "Testing" ──
+    try:
+        from app.api.github_projects import update_project_item_status
+
+        update_project_item_status(level_arg, "Testing")
+    except Exception:
+        pass
 
     return {"session_id": session_id, "status": "started"}
 
