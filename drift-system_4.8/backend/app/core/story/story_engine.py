@@ -21,7 +21,7 @@ try:
     from app.core.world.scene_generator import SceneGenerator
     from app.core.world.trigger import trigger_engine
     from app.core.world.trigger import TriggerPoint
-except Exception:
+except ImportError:
     class MiniMap:
         def __init__(self, _graph):
             self.positions = {}

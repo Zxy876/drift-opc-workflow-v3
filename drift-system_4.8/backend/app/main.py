@@ -59,7 +59,7 @@ except Exception as e:
         return []
 
     def load_level(_level_id):
-        return None
+        raise FileNotFoundError(f"Story engine unavailable, cannot load {_level_id}")
 
     story_engine = None
 
