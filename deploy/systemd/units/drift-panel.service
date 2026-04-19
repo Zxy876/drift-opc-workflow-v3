@@ -1,0 +1,18 @@
+[Unit]
+Description=Drift Experience Panel Static Server
+After=network-online.target
+Wants=network-online.target
+PartOf=drift-stack.target
+
+[Service]
+Type=simple
+User=__STACK_USER__
+EnvironmentFile=/etc/drift-stack.env
+WorkingDirectory=/opt/drift-stack-systemd
+ExecStart=/opt/drift-stack-systemd/bin/run-drift-panel.sh
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+WantedBy=drift-stack.target

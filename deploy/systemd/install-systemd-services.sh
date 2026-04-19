@@ -69,6 +69,7 @@ install -m 0755 "${SCRIPT_DIR}/bin/run-drift-backend.sh" "${INSTALL_ROOT}/bin/ru
 install -m 0755 "${SCRIPT_DIR}/bin/run-java-worker.sh" "${INSTALL_ROOT}/bin/run-java-worker.sh"
 install -m 0755 "${SCRIPT_DIR}/bin/run-python-worker.sh" "${INSTALL_ROOT}/bin/run-python-worker.sh"
 install -m 0755 "${SCRIPT_DIR}/bin/run-minecraft.sh" "${INSTALL_ROOT}/bin/run-minecraft.sh"
+install -m 0755 "${SCRIPT_DIR}/bin/run-drift-panel.sh" "${INSTALL_ROOT}/bin/run-drift-panel.sh"
 
 STACK_USER_VALUE="$(grep '^STACK_USER=' "${ENV_FILE}" | head -n 1 | cut -d= -f2-)"
 if [[ -z "${STACK_USER_VALUE}" ]]; then
@@ -81,9 +82,10 @@ sed "s/__STACK_USER__/${STACK_USER_VALUE}/g" "${SCRIPT_DIR}/units/drift-backend.
 sed "s/__STACK_USER__/${STACK_USER_VALUE}/g" "${SCRIPT_DIR}/units/drift-java-worker@.service" > "${UNIT_DIR}/drift-java-worker@.service"
 sed "s/__STACK_USER__/${STACK_USER_VALUE}/g" "${SCRIPT_DIR}/units/drift-python-worker@.service" > "${UNIT_DIR}/drift-python-worker@.service"
 sed "s/__STACK_USER__/${STACK_USER_VALUE}/g" "${SCRIPT_DIR}/units/drift-minecraft.service" > "${UNIT_DIR}/drift-minecraft.service"
+sed "s/__STACK_USER__/${STACK_USER_VALUE}/g" "${SCRIPT_DIR}/units/drift-panel.service" > "${UNIT_DIR}/drift-panel.service"
 chmod 0644 "${UNIT_DIR}/drift-asyncaiflow.service" "${UNIT_DIR}/drift-backend.service" \
   "${UNIT_DIR}/drift-java-worker@.service" "${UNIT_DIR}/drift-python-worker@.service" \
-  "${UNIT_DIR}/drift-minecraft.service"
+  "${UNIT_DIR}/drift-minecraft.service" "${UNIT_DIR}/drift-panel.service"
 install -m 0644 "${SCRIPT_DIR}/units/drift-stack.target" "${UNIT_DIR}/drift-stack.target"
 
 systemctl daemon-reload
@@ -107,6 +109,7 @@ systemctl restart drift-python-worker@drift_test.service || systemctl start drif
 systemctl restart drift-python-worker@drift_deploy.service || systemctl start drift-python-worker@drift_deploy.service
 systemctl restart drift-python-worker@drift_git_push.service || systemctl start drift-python-worker@drift_git_push.service
 systemctl restart drift-python-worker@drift_refresh.service || systemctl start drift-python-worker@drift_refresh.service
+systemctl restart drift-panel.service || systemctl start drift-panel.service
 
 if grep -q '^ENABLE_DRIFT_MINECRAFT=true$' "${ENV_FILE}"; then
   systemctl restart drift-minecraft.service || systemctl start drift-minecraft.service
@@ -117,5 +120,6 @@ echo "Installed systemd units. Useful commands:"
 echo "  systemctl status drift-asyncaiflow.service"
 echo "  systemctl status drift-backend.service"
 echo "  systemctl status drift-python-worker@drift_code.service"
+echo "  systemctl status drift-panel.service"
 echo "  journalctl -u drift-asyncaiflow.service -f"
 echo "  journalctl -u drift-python-worker@drift_code.service -f"
