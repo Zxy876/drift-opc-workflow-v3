@@ -212,7 +212,9 @@ function createBot() {
   })
 
   bot.on('health', () => {
-    // 血量变化时记录（可扩展）
+    if (bot && bot.entity) {
+      autoBroadcast('DEBUG', `❤ 血量: ${bot.health}/20 | 饥饿: ${bot.food}/20`, 'health')
+    }
   })
 
   bot.on('kicked', (reason) => {
@@ -338,12 +340,14 @@ function executeAction(action) {
     )
     if (target && entityPos.distanceTo(target.position) < 4) {
       bot.attack(target)
+      autoBroadcast('ACTION', `⚔ 攻击 ${target.name || target.displayName || '实体'} (距离 ${entityPos.distanceTo(target.position).toFixed(1)}m)`, 'attack')
     }
   }
 
   // 使用物品
   if (action.use_item === 1) {
     bot.activateItem()
+    autoBroadcast('ACTION', '🔧 使用物品', 'use_item')
   }
 
   // 视角旋转
@@ -363,6 +367,22 @@ function resetLevelFlags() {
   chatHistory.length = 0
   levelResetTime = Date.now()  // BUG-A: 记录重置时间，防止关卡加载消息触发假阳性
   pendingDeathBroadcast = null
+}
+
+// ─── 自动广播辅助 ──────────────────────────────────────────
+let lastBroadcastTime = 0
+const BROADCAST_COOLDOWN = 2000  // 同类广播最少间隔 2 秒
+const lastBroadcastByType = {}   // { type: timestamp }
+
+function autoBroadcast(level, msg, type = 'default') {
+  if (!bot || !botReady || !bot.entity) return
+  const now = Date.now()
+  // 同类型消息节流
+  if (lastBroadcastByType[type] && now - lastBroadcastByType[type] < BROADCAST_COOLDOWN) return
+  lastBroadcastByType[type] = now
+  lastBroadcastTime = now
+  const safe = String(msg).replace(/\n/g, ' ').slice(0, 220)
+  bot.chat(`/botnarrate ${level} ${safe}`)
 }
 
 // ─── TCP Bridge 服务器 ──────────────────────────────────────
@@ -411,14 +431,29 @@ function handleCommand(cmd) {
       }
       return getState()
 
-    case 'action':
-      executeAction(cmd.action || {})
+    case 'action': {
+      const a = cmd.action || {}
+      executeAction(a)
+      // 移动状态汇总广播（每 5 秒一次）
+      const parts = []
+      if (a.move_forward === 1) parts.push('前进')
+      if (a.move_forward === 2) parts.push('后退')
+      if (a.sprint === 1) parts.push('疾跑')
+      if (a.jump === 1) parts.push('跳跃')
+      if (parts.length > 0) {
+        autoBroadcast('DEBUG', `🎮 ${parts.join('+')}`, 'movement')
+      }
       return { ok: true }
+    }
 
     case 'command':
       // 执行 MC 聊天命令（如 /level, /easy, /advance, /create 等）
       if (bot && botReady && cmd.text) {
         bot.chat(cmd.text)
+        // 广播执行的命令（隐藏 /botnarrate 避免递归）
+        if (!cmd.text.startsWith('/botnarrate')) {
+          autoBroadcast('INFO', `💬 执行命令: ${cmd.text}`, 'command')
+        }
       }
       return { ok: true, command: cmd.text }
 
@@ -439,6 +474,7 @@ function handleCommand(cmd) {
       driftLastFetch = 0
       if (bot && botReady && cmd.level_id) {
         bot.chat(`/level ${cmd.level_id}`)
+        autoBroadcast('INFO', `🔄 重置关卡: ${cmd.level_id}`, 'reset')
       }
       // 3 秒后预加载 Drift 状态
       setTimeout(() => getDriftState().catch(() => {}), 3000)
@@ -458,6 +494,7 @@ function handleCommand(cmd) {
         const range = cmd.range || 1
         const timeout = cmd.timeout || 30000
         bot.pathfinder.setGoal(new GoalNear(cmd.x, cmd.y, cmd.z, range))
+        autoBroadcast('ACTION', `🧭 导航到 (${cmd.x.toFixed(0)}, ${cmd.y.toFixed(0)}, ${cmd.z.toFixed(0)})`, 'navigate')
         // 超时后自动取消导航（防止 pathfinder 卡死）
         setTimeout(() => {
           try { if (bot && botReady) bot.pathfinder.setGoal(null) } catch (e) {}
@@ -482,6 +519,7 @@ function handleCommand(cmd) {
           const target = items[0]
           const { GoalNear } = goals
           bot.pathfinder.setGoal(new GoalNear(target.position.x, target.position.y, target.position.z, 1))
+          autoBroadcast('ACTION', `📦 收集 ${target.name || cmd.item_name} (距离 ${bot.entity.position.distanceTo(target.position).toFixed(1)}m)`, 'collect')
           return { ok: true, found: true, target: target.name, distance: +bot.entity.position.distanceTo(target.position).toFixed(2) }
         }
         return { ok: true, found: false }
