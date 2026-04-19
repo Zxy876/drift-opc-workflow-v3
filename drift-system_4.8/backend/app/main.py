@@ -9,7 +9,11 @@ from fastapi.staticfiles import StaticFiles
 from app.api.tree_api import router as tree_router
 from app.api.dsl_api import router as dsl_router
 from app.api.hint_api import router as hint_router
-from app.api.world_api import router as world_router
+try:
+    from app.api.world_api import router as world_router
+except Exception as e:
+    world_router = None
+    print(f">>> World router disabled: {e}")
 from app.api.story_api import router as story_router
 from app.api.npc_api import router as npc_router
 from app.api.tutorial_api import router as tutorial_router
@@ -49,7 +53,8 @@ app.add_middleware(
 app.include_router(tree_router,        tags=["Tree"])
 app.include_router(dsl_router,         tags=["DSL"])
 app.include_router(hint_router,        tags=["Hint"])
-app.include_router(world_router,       tags=["World"])
+if world_router is not None:
+    app.include_router(world_router,   tags=["World"])
 app.include_router(story_router,       tags=["Story"])
 app.include_router(npc_router,         tags=["NPC"])
 app.include_router(tutorial_router,    tags=["Tutorial"])
