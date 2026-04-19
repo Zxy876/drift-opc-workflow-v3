@@ -81,3 +81,7 @@ sudo journalctl -u drift-python-worker@drift_refresh.service -f
 - The backend venv must already contain `uvicorn` and backend dependencies.
 - `drift_web_search_worker` is included as a stub so difficulty 5 Drift DAGs do not stall.
 - Minecraft is left optional because some VM setups need extra memory flags or a different server jar path.
+
+## Runbook
+
+- Game-ready CI/CD and precheck guide: `VM_GAME_READY_CICD_RUNBOOK.md`
