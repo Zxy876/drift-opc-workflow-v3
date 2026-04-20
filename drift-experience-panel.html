@@ -1282,9 +1282,27 @@ async function doLoad() {
     // auto refresh state
     await doRefreshState()
 
-    // Agent Replay: Reload MC 时自动重新触发 Agent
+    // Agent Replay: Reload MC 时通过 replay 端点重新触发（自动停止旧会话 + 重置状态）
     if (['driftagent', 'driftrlagent'].includes((playerId || '').toLowerCase())) {
-      triggerDriftAgentPlay(levelId, playerId)
+      if (_playPollTimer) { clearInterval(_playPollTimer); _playPollTimer = null }
+      try {
+        const rr = await POST('/evolution/replay', {
+          level_id: levelId,
+          player_id: playerId,
+          skill: 'average',
+          max_steps: 3000,
+        })
+        if (rr.status === 'ok' && rr.session_id) {
+          _activePlaySessionId = rr.session_id
+          startPlayPolling(rr.session_id)
+          const dot = $('mcFeedbackDot')
+          const txt = $('mcFeedbackText')
+          if (dot) dot.className = 'mc-dot live'
+          if (txt) txt.textContent = `🔄 DriftAgent 正在重玩 ${levelId}...`
+        }
+      } catch (e) {
+        toast('Agent 重玩失败: ' + e.message, 'err')
+      }
     }
   }).catch(e => { toast('Load 失败: ' + e.message, 'err') })
 }
