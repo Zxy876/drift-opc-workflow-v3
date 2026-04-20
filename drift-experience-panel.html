@@ -612,6 +612,7 @@ textarea { min-height: 80px; }
       <div style="display:flex;gap:6px;margin-top:4px">
         <button class="btn btn-sm" style="opacity:.5;flex:1" onclick="doInject()">⚙ Compile Only</button>
         <button class="btn btn-sm btn-cyan" style="opacity:.7;flex:1" onclick="doLoad()">⬇ Reload MC</button>
+        <button class="btn btn-sm" style="flex:1;background:var(--purple);color:#fff" onclick="doReplay()">🔄 Replay</button>
       </div>
       <!-- Phase 5: AsyncAIFlow Workflow Monitor -->
       <div class="wf-monitor" id="wfMonitor" style="display:none">
@@ -1280,7 +1281,53 @@ async function doLoad() {
     toast('关卡加载成功，可开始触发事件', 'ok')
     // auto refresh state
     await doRefreshState()
+
+    // Agent Replay: Reload MC 时自动重新触发 Agent
+    if (['driftagent', 'driftrlagent'].includes((playerId || '').toLowerCase())) {
+      triggerDriftAgentPlay(levelId, playerId)
+    }
   }).catch(e => { toast('Load 失败: ' + e.message, 'err') })
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   ③ Runtime: Replay Agent
+───────────────────────────────────────────────────────────────── */
+async function doReplay() {
+  const btn = event.target
+  const levelId = $('levelId').value.trim()
+  const playerId = $('playerId').value.trim()
+  if (!levelId || !playerId) { toast('请先填写 level_id / player_id', 'err'); return }
+
+  // 如果当前有正在轮询的 play session，先停止轮询
+  if (_playPollTimer) { clearInterval(_playPollTimer); _playPollTimer = null }
+
+  await withSpin(btn, async () => {
+    const r = await POST('/evolution/replay', {
+      level_id: levelId,
+      player_id: playerId,
+      skill: 'average',
+      max_steps: 3000,
+    })
+
+    if (r.status === 'ok' && r.session_id) {
+      _activePlaySessionId = r.session_id
+      toast(`🔄 Replay 已启动 #${r.session_id}`, 'ok')
+
+      // 刷新 state 面板（显示重置后的状态）
+      await doRefreshState()
+
+      // 开始轮询新的 play 状态
+      startPlayPolling(r.session_id)
+
+      // 更新 Runtime 面板
+      const dot = $('mcFeedbackDot')
+      const txt = $('mcFeedbackText')
+      if (dot) dot.className = 'mc-dot live'
+      if (txt) txt.textContent = `🔄 DriftAgent 正在重玩 ${levelId}...`
+    } else {
+      toast('Replay 失败: ' + (r.detail || JSON.stringify(r)), 'err')
+    }
+  }).catch(e => { toast('Replay 失败: ' + e.message, 'err') })
 }
 
 /* ─────────────────────────────────────────────────────────────────

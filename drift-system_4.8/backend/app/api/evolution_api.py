@@ -389,6 +389,14 @@ class _PlayRequest(BaseModel):
     bot_port: int = 9999
 
 
+class _ReplayRequest(BaseModel):
+    level_id: str
+    player_id: str = "DriftRLAgent"
+    skill: str = "average"
+    max_steps: int = 3000
+    bot_port: int = 9999
+
+
 @router.post("/play")
 async def start_play(req: _PlayRequest):
     """
@@ -485,6 +493,82 @@ async def start_play(req: _PlayRequest):
 
     threading.Thread(target=_run_play, daemon=True).start()
     return {"session_id": session_id, "status": "started"}
+
+
+@router.post("/replay")
+async def replay_level(req: _ReplayRequest):
+    """
+    一键重玩：停止旧会话 → 重置 experience → 重新加载关卡 → 启动新 Agent Play。
+
+    前端 "🔄 Replay" 按钮调用此端点。
+    """
+    result_log = []
+
+    # Step 1: 停止所有正在运行的 Play 会话
+    stopped_sessions = []
+    for sid, session in list(_play_sessions.items()):
+        proc = session.get("process")
+        if proc and proc.poll() is None:
+            try:
+                proc.send_signal(signal.SIGINT)
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+            session["status"] = "stopped"
+            stopped_sessions.append(sid)
+    if stopped_sessions:
+        result_log.append(f"stopped {len(stopped_sessions)} session(s)")
+
+    # Step 2: 清理旧 Play 会话记录
+    _cleanup_old_play_sessions()
+
+    # Step 3: 重置 experience 状态（失败不阻塞后续）
+    try:
+        from app.core.runtime.experience_runtime import experience_runtime_engine
+
+        experience_runtime_engine.reset_player_level(req.player_id, req.level_id)
+        result_log.append("experience state reset")
+    except Exception as exc:
+        result_log.append(f"experience reset skipped: {exc}")
+
+    # Step 4: 重新加载关卡（失败不阻塞后续）
+    try:
+        from app.core.story.story_engine import story_engine
+
+        story_engine.load_level_for_player(req.player_id, req.level_id)
+        result_log.append("level reloaded")
+    except Exception as exc:
+        result_log.append(f"level reload failed: {exc}")
+
+    # Step 5: 启动新 Play 会话（复用 start_play 逻辑）
+    play_req = _PlayRequest(
+        level_id=req.level_id,
+        player_id=req.player_id,
+        skill=req.skill,
+        max_steps=req.max_steps,
+        bot_port=req.bot_port,
+    )
+
+    try:
+        play_result = await start_play(play_req)
+        result_log.append(f"new play session #{play_result['session_id']}")
+        return {
+            "status": "ok",
+            "session_id": play_result["session_id"],
+            "steps": result_log,
+        }
+    except HTTPException as exc:
+        return {
+            "status": "error",
+            "detail": exc.detail,
+            "steps": result_log,
+        }
 
 
 @router.get("/play/status/{session_id}")
