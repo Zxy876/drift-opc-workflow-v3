@@ -142,7 +142,7 @@ def get_tutorial_status(player_id: str):
     }
 
 
-@router.get("/hint/{player_id}")
+@router.api_route("/hint/{player_id}", methods=["GET", "POST"])
 def get_tutorial_hint(player_id: str):
     """获取当前步骤的提示"""
     hint = tutorial_system.give_hint(player_id)
