@@ -4,6 +4,25 @@ set -euo pipefail
 LOG_PREFIX="[drift-healthcheck]"
 FAILED=0
 
+service_uptime_seconds() {
+  local name="$1"
+  local active_mono_us now_mono_us
+
+  active_mono_us="$(systemctl show -p ActiveEnterTimestampMonotonic --value "$name" 2>/dev/null || true)"
+  if [[ -z "$active_mono_us" || "$active_mono_us" == "0" ]]; then
+    echo 0
+    return
+  fi
+
+  now_mono_us="$(awk '{printf "%.0f", $1 * 1000000}' /proc/uptime)"
+  if [[ -z "$now_mono_us" || "$now_mono_us" -le "$active_mono_us" ]]; then
+    echo 0
+    return
+  fi
+
+  awk -v now_us="$now_mono_us" -v active_us="$active_mono_us" 'BEGIN { printf "%d", (now_us - active_us) / 1000000 }'
+}
+
 run_systemctl() {
   if systemctl "$@" >/dev/null 2>&1; then
     return 0
@@ -19,6 +38,14 @@ check_service() {
   local name="$1"
   local url="$2"
   local timeout="${3:-10}"
+  local min_uptime="${4:-0}"
+
+  local uptime
+  uptime="$(service_uptime_seconds "$name")"
+  if [[ "$uptime" -lt "$min_uptime" ]]; then
+    echo "$LOG_PREFIX WARMUP: $name uptime=${uptime}s < ${min_uptime}s, skip probe"
+    return
+  fi
 
   if ! curl -sf -m "$timeout" "$url" >/dev/null 2>&1; then
     echo "$LOG_PREFIX FAIL: $name ($url) - restarting..."
@@ -37,6 +64,14 @@ check_service() {
 check_port() {
   local name="$1"
   local port="$2"
+  local min_uptime="${3:-0}"
+
+  local uptime
+  uptime="$(service_uptime_seconds "$name")"
+  if [[ "$uptime" -lt "$min_uptime" ]]; then
+    echo "$LOG_PREFIX WARMUP: $name uptime=${uptime}s < ${min_uptime}s, skip port check"
+    return
+  fi
 
   if ! ss -tlnp | grep -q ":${port} "; then
     echo "$LOG_PREFIX FAIL: $name (port $port not listening) - restarting..."
@@ -52,10 +87,10 @@ check_port() {
   fi
 }
 
-check_service "drift-backend.service" "http://127.0.0.1:8000/levels"
-check_service "drift-asyncaiflow.service" "http://127.0.0.1:8080/workflows?page=0&size=1"
-check_service "drift-panel.service" "http://127.0.0.1:8888/"
-check_port "drift-minecraft.service" 25565
+check_service "drift-backend.service" "http://127.0.0.1:8000/levels" 10 30
+check_service "drift-asyncaiflow.service" "http://127.0.0.1:8080/workflows?page=0&size=1" 10 150
+check_service "drift-panel.service" "http://127.0.0.1:8888/" 10 20
+check_port "drift-minecraft.service" 25565 180
 
 for worker in drift_trigger drift_web_search drift_plan drift_code drift_review drift_test drift_deploy drift_git_push drift_refresh drift_experience; do
   SVC="drift-python-worker@${worker}.service"
