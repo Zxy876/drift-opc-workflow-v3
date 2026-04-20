@@ -1,5 +1,5 @@
 [Unit]
-Description=Drift Experience Panel Static Server
+Description=Drift Experience Panel Static Server - 7x24
 After=network-online.target
 Wants=network-online.target
 PartOf=drift-stack.target
@@ -10,8 +10,11 @@ User=__STACK_USER__
 EnvironmentFile=/etc/drift-stack.env
 WorkingDirectory=/opt/drift-stack-systemd
 ExecStart=/opt/drift-stack-systemd/bin/run-drift-panel.sh
-Restart=on-failure
+Restart=always
 RestartSec=3
+StartLimitBurst=10
+StartLimitIntervalSec=300
+WatchdogSec=60
 
 [Install]
 WantedBy=multi-user.target

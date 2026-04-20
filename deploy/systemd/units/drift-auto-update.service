@@ -1,0 +1,8 @@
+[Unit]
+Description=Drift Git Auto-Update
+
+[Service]
+Type=oneshot
+User=__STACK_USER__
+EnvironmentFile=/etc/drift-stack.env
+ExecStart=/opt/drift-stack-systemd/bin/drift-auto-update.sh

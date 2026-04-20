@@ -1,0 +1,6 @@
+[Unit]
+Description=Drift Stack Health Check
+
+[Service]
+Type=oneshot
+ExecStart=/opt/drift-stack-systemd/bin/drift-healthcheck.sh

@@ -1,7 +1,9 @@
 [Unit]
-Description=Drift VM Service Stack
+Description=Drift VM Service Stack - 7x24 Full Stack
 Wants=drift-asyncaiflow.service
 Wants=drift-backend.service
+Wants=drift-panel.service
+Wants=drift-minecraft.service
 Wants=drift-java-worker@repository.service
 Wants=drift-java-worker@gpt.service
 Wants=drift-java-worker@git.service
@@ -14,6 +16,7 @@ Wants=drift-python-worker@drift_test.service
 Wants=drift-python-worker@drift_deploy.service
 Wants=drift-python-worker@drift_git_push.service
 Wants=drift-python-worker@drift_refresh.service
+Wants=drift-python-worker@drift_experience.service
 After=drift-asyncaiflow.service drift-backend.service
 
 [Install]

@@ -137,3 +137,46 @@ ss -tlnp | egrep ':3306|:6379|:8000|:8080|:25565'
 - `systemctl is-active` 全量截图或文本
 - 预检脚本最后一次输出
 - 若有 WARN，写清是否可接受及原因
+
+## 8. 7x24 常驻化运维
+
+### 开机自启
+所有服务通过 `drift-stack.target` 统一管理：
+- `systemctl enable drift-stack.target` -> 开机时全栈自启
+- `systemctl start drift-stack.target` -> 手动一键拉起全栈
+
+### 健康检查
+- `drift-healthcheck.timer` 每 5 分钟运行一次
+- 自动检测 4 个核心端口 + 13 个 worker 进程
+- 发现异常自动重启对应服务
+- 查看日志：`journalctl -u drift-healthcheck.service --since "1 hour ago"`
+
+### 代码热更新
+- `drift-auto-update.timer` 每 10 分钟检查 origin/main
+- 只重启实际变更的服务（后端/面板/worker）
+- 查看日志：`journalctl -u drift-auto-update.service --since "1 hour ago"`
+
+### 端口清单
+| 端口 | 服务 | 说明 |
+|------|------|------|
+| 8000 | drift-backend | Drift Backend API |
+| 8080 | drift-asyncaiflow | AsyncAIFlow Runtime |
+| 8888 | drift-panel | Experience Panel |
+| 25565 | drift-minecraft | Minecraft Server |
+| 3306 | mysql | MySQL |
+| 6379 | redis | Redis |
+
+### 一键诊断
+```bash
+# 全栈状态
+systemctl list-units 'drift-*' --no-pager
+
+# 最近健康检查
+journalctl -u drift-healthcheck.service -n 20 --no-pager
+
+# 最近自动更新
+journalctl -u drift-auto-update.service -n 20 --no-pager
+
+# 手动触发健康检查
+systemctl start drift-healthcheck.service && journalctl -u drift-healthcheck.service -n 30 --no-pager
+```
