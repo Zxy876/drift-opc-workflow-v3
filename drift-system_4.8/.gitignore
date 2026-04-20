@@ -19,6 +19,10 @@ node_modules/
 # Minecraft/Drift runtime
 world/
 !plugin/src/**/world/
+!backend/app/core/world/
+!backend/app/core/world/**
+backend/app/core/world/__pycache__/
+backend/app/core/world/**/*.pyc
 logs/
 server/
 *.pid
