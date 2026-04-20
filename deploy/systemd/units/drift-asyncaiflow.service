@@ -3,6 +3,7 @@ Description=Drift AsyncAIFlow Runtime - 7x24
 After=network-online.target
 Wants=network-online.target
 PartOf=drift-stack.target
+StartLimitIntervalSec=300
 
 [Service]
 Type=simple
@@ -13,7 +14,6 @@ ExecStart=/opt/drift-stack-systemd/bin/run-asyncaiflow-runtime.sh
 Restart=always
 RestartSec=5
 StartLimitBurst=10
-StartLimitIntervalSec=300
 
 [Install]
 WantedBy=multi-user.target

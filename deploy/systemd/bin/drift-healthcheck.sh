@@ -6,21 +6,25 @@ FAILED=0
 
 service_uptime_seconds() {
   local name="$1"
-  local active_mono_us now_mono_us
+  local start_mono_us now_mono_us
 
-  active_mono_us="$(systemctl show -p ActiveEnterTimestampMonotonic --value "$name" 2>/dev/null || true)"
-  if [[ -z "$active_mono_us" || "$active_mono_us" == "0" ]]; then
+  start_mono_us="$(systemctl show -p ExecMainStartTimestampMonotonic --value "$name" 2>/dev/null || true)"
+  if [[ -z "$start_mono_us" || "$start_mono_us" == "0" ]]; then
+    start_mono_us="$(systemctl show -p ActiveEnterTimestampMonotonic --value "$name" 2>/dev/null || true)"
+  fi
+
+  if [[ -z "$start_mono_us" || "$start_mono_us" == "0" ]]; then
     echo 0
     return
   fi
 
   now_mono_us="$(awk '{printf "%.0f", $1 * 1000000}' /proc/uptime)"
-  if [[ -z "$now_mono_us" || "$now_mono_us" -le "$active_mono_us" ]]; then
+  if [[ -z "$now_mono_us" || "$now_mono_us" -le "$start_mono_us" ]]; then
     echo 0
     return
   fi
 
-  awk -v now_us="$now_mono_us" -v active_us="$active_mono_us" 'BEGIN { printf "%d", (now_us - active_us) / 1000000 }'
+  awk -v now_us="$now_mono_us" -v start_us="$start_mono_us" 'BEGIN { printf "%d", (now_us - start_us) / 1000000 }'
 }
 
 run_systemctl() {
@@ -94,6 +98,10 @@ check_port "drift-minecraft.service" 25565 180
 
 for worker in drift_trigger drift_web_search drift_plan drift_code drift_review drift_test drift_deploy drift_git_push drift_refresh drift_experience; do
   SVC="drift-python-worker@${worker}.service"
+  if ! systemctl is-enabled --quiet "$SVC" 2>/dev/null && ! systemctl is-active --quiet "$SVC" 2>/dev/null; then
+    echo "$LOG_PREFIX SKIP: $SVC is disabled"
+    continue
+  fi
   if ! systemctl is-active --quiet "$SVC" 2>/dev/null; then
     echo "$LOG_PREFIX FAIL: $SVC - restarting..."
     if run_systemctl restart "$SVC"; then
@@ -107,6 +115,10 @@ done
 
 for worker in repository gpt git; do
   SVC="drift-java-worker@${worker}.service"
+  if ! systemctl is-enabled --quiet "$SVC" 2>/dev/null && ! systemctl is-active --quiet "$SVC" 2>/dev/null; then
+    echo "$LOG_PREFIX SKIP: $SVC is disabled"
+    continue
+  fi
   if ! systemctl is-active --quiet "$SVC" 2>/dev/null; then
     echo "$LOG_PREFIX FAIL: $SVC - restarting..."
     if run_systemctl restart "$SVC"; then
