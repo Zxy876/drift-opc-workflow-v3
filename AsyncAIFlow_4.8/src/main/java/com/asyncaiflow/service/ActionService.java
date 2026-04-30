@@ -144,6 +144,8 @@ public class ActionService {
         action.setExecutionStartedAt(null);
         action.setLastExecutionDurationMs(null);
         action.setLastReclaimReason(null);
+        action.setSlackThreadId(request.slackThreadId());
+        action.setNotepadRef(null);
         action.setCreatedAt(now);
         action.setUpdatedAt(now);
 
@@ -228,7 +230,9 @@ public class ActionService {
                     action.getType(),
                     assignmentPayload,
                     action.getRetryCount(),
-                    action.getLeaseExpireAt()
+                    action.getLeaseExpireAt(),
+                    action.getSlackThreadId(),
+                    action.getNotepadRef()
             ));
         }
 
@@ -268,6 +272,7 @@ public class ActionService {
             action.setReclaimTime(null);
             completeExecutionAttempt(action, now);
             action.setLastReclaimReason(null);
+            action.setNotepadRef(extractNotepadFromResult(request.result()));
             action.setUpdatedAt(now);
             actionMapper.updateById(action);
 
@@ -284,6 +289,7 @@ public class ActionService {
 
         action.setSubmitTime(now);
         action.setReclaimTime(null);
+        action.setNotepadRef(extractNotepadFromResult(request.result()));
 
         applyFailureWithRetry(
                 action,
@@ -1256,5 +1262,26 @@ public class ActionService {
                 action.getCreatedAt(),
                 action.getUpdatedAt()
         );
+    }
+
+    /**
+     * Extract the "notepad" field from a result JSON string produced by the worker.
+     * If the result is not valid JSON or has no "notepad" field, returns null.
+     * The worker can embed: {"response": "...", "notepad": "summary of what was done"}
+     */
+    private String extractNotepadFromResult(String resultJson) {
+        if (resultJson == null || resultJson.isBlank()) {
+            return null;
+        }
+        try {
+            JsonNode node = objectMapper.readTree(resultJson);
+            JsonNode notepad = node.get("notepad");
+            if (notepad != null && notepad.isTextual()) {
+                return notepad.asText();
+            }
+        } catch (JsonProcessingException ignored) {
+            // result is plain text — not a JSON object
+        }
+        return null;
     }
 }

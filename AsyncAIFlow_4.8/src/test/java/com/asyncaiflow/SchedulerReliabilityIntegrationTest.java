@@ -106,7 +106,8 @@ class SchedulerReliabilityIntegrationTest {
                 List.of(),
                 2,
                 1,
-                120
+                120,
+                null
         ));
 
         Optional<ActionAssignmentResponse> assignment = actionService.pollAction("worker-poll");
@@ -132,7 +133,8 @@ class SchedulerReliabilityIntegrationTest {
                 List.of(),
                 1,
                 1,
-                120
+                120,
+                null
         ));
 
         Optional<ActionAssignmentResponse> assignment = actionService.pollAction("worker-review");
@@ -152,7 +154,8 @@ class SchedulerReliabilityIntegrationTest {
                 List.of(),
                 1,
                 1,
-                120
+                120,
+                null
         ));
         ActionResponse action2 = actionService.createAction(new CreateActionRequest(
                 workflow.id(),
@@ -161,7 +164,8 @@ class SchedulerReliabilityIntegrationTest {
                 List.of(),
                 1,
                 1,
-                120
+                120,
+                null
         ));
 
         Optional<ActionAssignmentResponse> first = actionService.pollAction("worker-compete-a");
@@ -185,7 +189,8 @@ class SchedulerReliabilityIntegrationTest {
                 List.of(),
                 2,
                 1,
-                120
+                120,
+                null
         ));
 
         ActionEntity running = actionMapper.selectById(action.id());
@@ -220,7 +225,8 @@ class SchedulerReliabilityIntegrationTest {
                 List.of(),
                 2,
                 1,
-                120
+                120,
+                null
         ));
 
         ActionEntity running = actionMapper.selectById(action.id());
@@ -246,7 +252,8 @@ class SchedulerReliabilityIntegrationTest {
                 List.of(),
                 2,
                 1,
-                120
+                120,
+                null
         ));
 
         ActionEntity running = actionMapper.selectById(action.id());
@@ -275,6 +282,8 @@ class SchedulerReliabilityIntegrationTest {
                 2,
                 1,
                 60
+        ,
+        null
         ));
 
         ActionEntity running = actionMapper.selectById(action.id());
@@ -308,7 +317,8 @@ class SchedulerReliabilityIntegrationTest {
                 List.of(),
                 1,
                 1,
-                120
+                120,
+                null
         ));
         ActionResponse downstream = actionService.createAction(new CreateActionRequest(
                 workflow.id(),
@@ -317,7 +327,8 @@ class SchedulerReliabilityIntegrationTest {
                 List.of(upstream.id()),
                 1,
                 1,
-                120
+                120,
+                null
         ));
 
         ActionEntity upstreamRunning = actionMapper.selectById(upstream.id());
@@ -358,6 +369,8 @@ class SchedulerReliabilityIntegrationTest {
             1,
             1,
             120
+        ,
+        null
         ));
         ActionResponse upstreamB = actionService.createAction(new CreateActionRequest(
             workflow.id(),
@@ -367,6 +380,8 @@ class SchedulerReliabilityIntegrationTest {
             1,
             1,
             120
+        ,
+        null
         ));
 
         ActionResponse downstreamContext = actionService.createAction(new CreateActionRequest(
@@ -377,6 +392,8 @@ class SchedulerReliabilityIntegrationTest {
             1,
             1,
             120
+        ,
+        null
         ));
         ActionResponse downstreamExplain = actionService.createAction(new CreateActionRequest(
             workflow.id(),
@@ -386,6 +403,8 @@ class SchedulerReliabilityIntegrationTest {
             1,
             1,
             120
+        ,
+        null
         ));
         ActionResponse downstreamReview = actionService.createAction(new CreateActionRequest(
             workflow.id(),
@@ -395,6 +414,8 @@ class SchedulerReliabilityIntegrationTest {
             1,
             1,
             120
+        ,
+        null
         ));
 
         ActionEntity upstreamAReloaded = actionMapper.selectById(upstreamA.id());
@@ -451,6 +472,8 @@ class SchedulerReliabilityIntegrationTest {
             1,
             1,
             120
+        ,
+        null
         ));
 
         ActionResponse downstreamOne = actionService.createAction(new CreateActionRequest(
@@ -461,6 +484,8 @@ class SchedulerReliabilityIntegrationTest {
             1,
             1,
             120
+        ,
+        null
         ));
         ActionResponse downstreamTwo = actionService.createAction(new CreateActionRequest(
             workflow.id(),
@@ -470,6 +495,8 @@ class SchedulerReliabilityIntegrationTest {
             1,
             1,
             120
+        ,
+        null
         ));
         ActionResponse downstreamThree = actionService.createAction(new CreateActionRequest(
             workflow.id(),
@@ -479,6 +506,8 @@ class SchedulerReliabilityIntegrationTest {
             1,
             1,
             120
+        ,
+        null
         ));
 
         ActionEntity upstreamReloaded = actionMapper.selectById(upstream.id());
@@ -556,7 +585,8 @@ class SchedulerReliabilityIntegrationTest {
                 List.of(),
                 1,
                 1,
-                120
+                120,
+                null
         ));
 
         ActionResponse downstream = actionService.createAction(new CreateActionRequest(
@@ -573,7 +603,8 @@ class SchedulerReliabilityIntegrationTest {
                 List.of(upstream.id()),
                 1,
                 1,
-                120
+                120,
+                null
         ));
 
         ActionEntity upstreamRunning = actionMapper.selectById(upstream.id());
@@ -637,6 +668,8 @@ class SchedulerReliabilityIntegrationTest {
             1,
             1,
             120
+        ,
+        null
         ));
 
         ActionResponse downstream = actionService.createAction(new CreateActionRequest(
@@ -656,6 +689,8 @@ class SchedulerReliabilityIntegrationTest {
             1,
             1,
             120
+        ,
+        null
         ));
 
         ActionEntity upstreamRunning = actionMapper.selectById(upstream.id());
@@ -706,7 +741,8 @@ class SchedulerReliabilityIntegrationTest {
                 List.of(),
                 2,
                 1,
-                120
+                120,
+                null
         ));
 
         ActionEntity firstRun = actionMapper.selectById(action.id());
@@ -758,7 +794,8 @@ class SchedulerReliabilityIntegrationTest {
                 List.of(),
                 1,
                 1,
-                120
+                120,
+                null
         ));
 
         ActionEntity running = actionMapper.selectById(action.id());

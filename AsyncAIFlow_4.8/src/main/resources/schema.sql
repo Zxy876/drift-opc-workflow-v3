@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS action (
     last_execution_duration_ms BIGINT NULL,
     last_reclaim_reason VARCHAR(64) NULL,
     error_message VARCHAR(512) NULL,
+    slack_thread_id VARCHAR(128) NULL,
+    notepad_ref TEXT NULL,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
     INDEX idx_action_workflow (workflow_id),
@@ -267,6 +269,26 @@ SET @ddl = IF(
     (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'worker' AND COLUMN_NAME = 'last_heartbeat_at') = 0,
     'ALTER TABLE worker ADD COLUMN last_heartbeat_at DATETIME NULL',
+    'SELECT 1'
+);
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @ddl = IF(
+    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'action' AND COLUMN_NAME = 'slack_thread_id') = 0,
+    'ALTER TABLE action ADD COLUMN slack_thread_id VARCHAR(128) NULL',
+    'SELECT 1'
+);
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @ddl = IF(
+    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'action' AND COLUMN_NAME = 'notepad_ref') = 0,
+    'ALTER TABLE action ADD COLUMN notepad_ref TEXT NULL',
     'SELECT 1'
 );
 PREPARE stmt FROM @ddl;

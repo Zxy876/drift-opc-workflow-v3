@@ -14,6 +14,7 @@ public record CreateActionRequest(
         List<Long> upstreamActionIds,
         @PositiveOrZero(message = "must be greater than or equal to 0") Integer maxRetryCount,
         @PositiveOrZero(message = "must be greater than or equal to 0") Integer backoffSeconds,
-        @Positive(message = "must be greater than 0") Integer executionTimeoutSeconds
+        @Positive(message = "must be greater than 0") Integer executionTimeoutSeconds,
+        String slackThreadId
 ) {
 }

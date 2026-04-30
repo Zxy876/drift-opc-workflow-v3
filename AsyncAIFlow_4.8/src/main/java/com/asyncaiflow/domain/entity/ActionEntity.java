@@ -58,6 +58,10 @@ public class ActionEntity {
 
     private String errorMessage;
 
+    private String slackThreadId;
+
+    private String notepadRef;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
@@ -252,6 +256,22 @@ public class ActionEntity {
 
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
+    }
+
+    public String getSlackThreadId() {
+        return slackThreadId;
+    }
+
+    public void setSlackThreadId(String slackThreadId) {
+        this.slackThreadId = slackThreadId;
+    }
+
+    public String getNotepadRef() {
+        return notepadRef;
+    }
+
+    public void setNotepadRef(String notepadRef) {
+        this.notepadRef = notepadRef;
     }
 
     public LocalDateTime getCreatedAt() {

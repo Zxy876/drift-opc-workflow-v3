@@ -126,7 +126,8 @@ class RepositoryWorkerExecutionIntegrationTest {
                 List.of(),
                 1,
                 1,
-                120
+                120,
+                null
         ));
 
         Optional<ActionAssignmentResponse> assignment = actionService.pollAction(workerId);
@@ -187,7 +188,8 @@ class RepositoryWorkerExecutionIntegrationTest {
                 List.of(),
                 1,
                 1,
-                120
+                120,
+                null
         ));
 
         ActionResponse contextAction = actionService.createAction(new CreateActionRequest(
@@ -206,7 +208,8 @@ class RepositoryWorkerExecutionIntegrationTest {
                 List.of(semanticAction.id()),
                 1,
                 1,
-                120
+                120,
+                null
         ));
 
         processAssignment(semanticWorkerId, newRepositoryHandler(), "search_semantic");
@@ -250,7 +253,8 @@ class RepositoryWorkerExecutionIntegrationTest {
                 List.of(),
                 1,
                 1,
-                120
+                120,
+                null
         ));
 
         Optional<ActionAssignmentResponse> assignment = actionService.pollAction(workerId);
@@ -303,7 +307,8 @@ class RepositoryWorkerExecutionIntegrationTest {
                 List.of(),
                 1,
                 1,
-                120
+                120,
+                null
         ));
 
         Optional<ActionAssignmentResponse> assignment = actionService.pollAction(workerId);
@@ -363,7 +368,8 @@ class RepositoryWorkerExecutionIntegrationTest {
                 List.of(),
                 1,
                 1,
-                120
+                120,
+                null
         ));
 
         ActionResponse analyzeAction = actionService.createAction(new CreateActionRequest(
@@ -380,7 +386,8 @@ class RepositoryWorkerExecutionIntegrationTest {
                 List.of(searchAction.id()),
                 1,
                 1,
-                120
+                120,
+                null
         ));
 
         ActionResponse explainAction = actionService.createAction(new CreateActionRequest(
@@ -395,7 +402,8 @@ class RepositoryWorkerExecutionIntegrationTest {
                 List.of(analyzeAction.id()),
                 1,
                 1,
-                120
+                120,
+                null
         ));
 
         processAssignment(repositoryWorkerId, newRepositoryHandler(), "search_semantic");

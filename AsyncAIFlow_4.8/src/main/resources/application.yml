@@ -49,6 +49,7 @@ asyncaiflow:
   dispatch:
     capability-mapping:
       analyze_module: read_file
+      devos_chat: devos_chat
   scheduler:
     action-scan-fixed-delay-ms: 2000
     worker-scan-fixed-delay-ms: 10000

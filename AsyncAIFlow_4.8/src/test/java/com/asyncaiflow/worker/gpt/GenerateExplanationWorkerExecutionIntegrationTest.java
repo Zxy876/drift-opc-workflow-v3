@@ -120,7 +120,8 @@ class GenerateExplanationWorkerExecutionIntegrationTest {
                 List.of(),
                 1,
                 1,
-                120
+                120,
+                null
         ));
 
         Optional<ActionAssignmentResponse> assignment = actionService.pollAction(workerId);

@@ -219,7 +219,8 @@ class RepairWorkflowIntegrationTest {
                     upstreamActionIds,
                     1,
                     1,
-                    120
+                    120,
+                    null
             ));
             actionIdsByIndex.put(index, action.id());
         }

@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS action (
     last_execution_duration_ms BIGINT,
     last_reclaim_reason VARCHAR(64),
     error_message VARCHAR(512),
+    slack_thread_id VARCHAR(128),
+    notepad_ref CLOB,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL
 );

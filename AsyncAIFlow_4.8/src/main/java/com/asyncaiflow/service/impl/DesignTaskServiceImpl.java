@@ -112,7 +112,8 @@ public class DesignTaskServiceImpl implements DesignTaskService {
             null,
             0,
             1,
-            120
+            120,
+            null
         ));
 
         ActionResponse scanAction = null;
@@ -124,7 +125,8 @@ public class DesignTaskServiceImpl implements DesignTaskService {
                 null,
                 0,
                 1,
-                120
+                120,
+                null
             ));
         }
 
@@ -136,7 +138,8 @@ public class DesignTaskServiceImpl implements DesignTaskService {
             java.util.List.of(nlAction.id()),
             0,
             1,
-            30
+            30,
+            null
         ));
 
         // Step 3: 2-D nesting / fabric layout  (Python DP Worker)
@@ -147,7 +150,8 @@ public class DesignTaskServiceImpl implements DesignTaskService {
             java.util.List.of(nlAction.id(), topologyAction.id()),
             0,
             1,
-            30
+            30,
+            null
         ));
 
         // Step 4: 3-D rendering stub
@@ -165,7 +169,8 @@ public class DesignTaskServiceImpl implements DesignTaskService {
             rendererDependsOn,
             0,
             1,
-            30
+            30,
+            null
         ));
 
         LOGGER.info("Created design task: id={}, inputType={}, hasPrompt={}, hasImage={}, hasRawScan={}, optionsPresent={}",

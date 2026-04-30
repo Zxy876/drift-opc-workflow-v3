@@ -8,6 +8,8 @@ public record ActionAssignmentResponse(
         String type,
         String payload,
         Integer retryCount,
-        LocalDateTime leaseExpireAt
+        LocalDateTime leaseExpireAt,
+        String slackThreadId,
+        String notepadRef
 ) {
 }

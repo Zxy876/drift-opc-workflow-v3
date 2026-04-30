@@ -111,7 +111,8 @@ public class PlannerService {
                             List.of(applyActionId),
                             1,
                             0,
-                            60));
+                            60,
+                            null));
                     actionIds.add(driftAction.id());
                     upstreamIds = List.of(driftAction.id());
                 }
@@ -123,7 +124,8 @@ public class PlannerService {
                         upstreamIds.isEmpty() ? null : upstreamIds,
                         1,
                         10,
-                        300));
+                        300,
+                        null));
 
                 indexToActionId.put(i, action.id());
                 actionIds.add(action.id());
@@ -146,7 +148,8 @@ public class PlannerService {
                         List.of(lastActionId),
                         1,
                         10,
-                        300));
+                        300,
+                        null));
                 actionIds.add(commitAction.id());
             }
         } catch (ApiException e) {
